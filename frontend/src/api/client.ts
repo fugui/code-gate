@@ -9,8 +9,20 @@ export const getBaseApiPrefix = (): string => {
   return '/v1'
 }
 
-const getAuthToken = (): string => {
-  return localStorage.getItem('token') || localStorage.getItem('gate_api_key') || ''
+export const getAuthToken = (): string => {
+  if (typeof window === 'undefined') return ''
+  let token =
+    localStorage.getItem('code_shield_token') ||
+    localStorage.getItem('token') ||
+    localStorage.getItem('gate_api_key') ||
+    ''
+  if (!token && typeof document !== 'undefined') {
+    const match = document.cookie.match(/(?:^|;\s*)code_shield_token=([^;]*)/)
+    if (match) {
+      token = decodeURIComponent(match[1])
+    }
+  }
+  return token
 }
 
 export async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T> {

@@ -47,6 +47,11 @@ func UnifiedAuthMiddleware(jwtSecretGetter func() string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenStr := auth.ExtractToken(c)
 		if tokenStr == "" {
+			if cookie, err := c.Cookie(auth.StandardTokenKey); err == nil && cookie != "" {
+				tokenStr = cookie
+			}
+		}
+		if tokenStr == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": gin.H{
 					"message": "缺少 Authorization 认证标头或凭证",

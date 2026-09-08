@@ -104,7 +104,7 @@ func main() {
 			return false
 		},
 		RegisterRoutes: func(r *gin.Engine) {
-			// 免密健康探针接口
+			// 免密开放接口：健康探针与模型列表只读元数据
 			r.GET("/health", func(c *gin.Context) {
 				c.JSON(http.StatusOK, gin.H{
 					"status":  "healthy",
@@ -112,15 +112,15 @@ func main() {
 					"version": Version,
 				})
 			})
+			r.GET("/v1/models", api.HandleListModels)
 
-			// 统一鉴权与核心网关路由
+			// 统一鉴权与核心受保护网关路由
 			v1Group := r.Group("/v1")
 			v1Group.Use(api.UnifiedAuthMiddleware(func() string {
 				return cfg.Auth.JWTSecret
 			}))
 			{
-				// OpenAI 协议核心直通接口
-				v1Group.GET("/models", api.HandleListModels)
+				// OpenAI 协议核心直通接口（需鉴权与计费）
 				v1Group.POST("/chat/completions", api.HandleChatCompletions(proxyClient, router, quotaEngine))
 				v1Group.POST("/responses", api.HandleResponses(proxyClient, router, quotaEngine))
 

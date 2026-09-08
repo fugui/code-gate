@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Send, Square, Bot, User, Sparkles, ChevronDown, ChevronRight, Zap } from 'lucide-react'
-import { fetchModels, getBaseApiPrefix } from '../../api/client'
+import { fetchModels, getBaseApiPrefix, getAuthToken } from '../../api/client'
 import { ModelItem, ChatMessage } from '../../types'
 
 export const ChatPage: React.FC = () => {
@@ -82,7 +82,7 @@ export const ChatPage: React.FC = () => {
     let fullReasoning = ''
 
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('gate_api_key') || ''
+      const token = getAuthToken()
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       }
