@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"code-common/backend/auth"
 	"code-gate/internal/config"
 	"code-gate/internal/models"
 	"code-gate/internal/proxy"
@@ -183,5 +184,57 @@ func TestResponsesProtocolDirectForwarding(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Responses 直通请求失败: %d, body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUnifiedAuthMiddlewareWithSharedJWT(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	sharedSecret := "ABCDEFGHIJKLMNOPQRSTVUWXYZ0987654321"
+	wrongSecret := "WrongSecretKey123456789"
+
+	// 1. 初始化数据库
+	cfg, err := config.Load("../../config.yaml")
+	if err != nil {
+		cfg, _ = config.Load("../../config.yaml.example")
+	}
+	if cfg != nil {
+		_, _ = store.InitDB(cfg)
+	}
+
+	r := gin.New()
+	v1 := r.Group("/v1")
+	v1.Use(UnifiedAuthMiddleware(func() string {
+		return sharedSecret
+	}))
+	v1.GET("/user/profile", HandleGetUserProfile)
+
+	// 正确的统一 JWT
+	validToken, err := auth.GenerateToken(999, "testuser", "test@example.com", "Test User", false, []string{"user"}, sharedSecret, 1*time.Hour)
+	if err != nil {
+		t.Fatalf("生成 validToken 失败: %v", err)
+	}
+
+	// 错误的 JWT
+	invalidToken, _ := auth.GenerateToken(999, "testuser", "test@example.com", "Test User", false, []string{"user"}, wrongSecret, 1*time.Hour)
+
+	// 测试用错误的 JWT 请求 -> 401
+	wInvalid := httptest.NewRecorder()
+	reqInvalid, _ := http.NewRequest(http.MethodGet, "/v1/user/profile", nil)
+	reqInvalid.Header.Set("Authorization", "Bearer "+invalidToken)
+	r.ServeHTTP(wInvalid, reqInvalid)
+
+	if wInvalid.Code != http.StatusUnauthorized {
+		t.Errorf("使用错误密钥的 JWT 期望返回 401, 实际获得: %d", wInvalid.Code)
+	}
+
+	// 测试用统一共享 JWT 请求 -> 200
+	wValid := httptest.NewRecorder()
+	reqValid, _ := http.NewRequest(http.MethodGet, "/v1/user/profile", nil)
+	reqValid.Header.Set("Authorization", "Bearer "+validToken)
+	r.ServeHTTP(wValid, reqValid)
+
+	if wValid.Code != http.StatusOK {
+		t.Errorf("使用统一共享密钥的 JWT 期望返回 200, 实际获得: %d, body: %s", wValid.Code, wValid.Body.String())
 	}
 }

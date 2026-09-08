@@ -44,8 +44,6 @@ func HashAPIKey(key string) string {
 
 // UnifiedAuthMiddleware 统一凭证认证中间件：支持 API Key (sk-...) 与 JWT 混合认证
 func UnifiedAuthMiddleware(jwtSecretGetter func() string) gin.HandlerFunc {
-	jwtMiddleware := auth.RequireAuth(jwtSecretGetter)
-
 	return func(c *gin.Context) {
 		tokenStr := auth.ExtractToken(c)
 		if tokenStr == "" {
@@ -135,17 +133,31 @@ func UnifiedAuthMiddleware(jwtSecretGetter func() string) gin.HandlerFunc {
 			return
 		}
 
-		// 否则走标准 JWT 校验流程（CodeBench 登录用户）
-		jwtMiddleware(c)
-		if c.IsAborted() {
+		// 否则走标准 JWT 校验流程（CodeBench 登录用户 SSO）
+		claims, err := auth.ParseToken(tokenStr, jwtSecretGetter())
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": gin.H{
+					"message": "无效或已过期的登录凭证: " + err.Error(),
+					"type":    "invalid_request_error",
+					"code":    "unauthorized",
+				},
+			})
 			return
 		}
 
-		if rawUID, exists := c.Get(auth.ContextUserID); exists {
-			if uid, ok := rawUID.(uint); ok {
-				attachUserAndQuota(c, db, uid, nil)
-			}
-		}
+		// 注入统一规范身份上下文
+		c.Set(auth.ContextClaims, claims)
+		c.Set(auth.ContextUserID, claims.UserID)
+		c.Set(auth.ContextUsername, claims.Username)
+		c.Set(auth.ContextEmail, claims.Email)
+		c.Set(auth.ContextName, claims.Name)
+		c.Set(auth.ContextEmployeeID, claims.EmployeeID)
+		c.Set(auth.ContextIsAdmin, claims.IsAdmin)
+		c.Set(auth.ContextRoles, claims.Roles)
+
+		// 绑定网关用户 ID、配额角色与钱包资产
+		attachUserAndQuota(c, db, claims.UserID, nil)
 
 		c.Next()
 	}

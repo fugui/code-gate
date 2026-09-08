@@ -22,7 +22,7 @@ database:
   max_idle_conns: 10                     # 最大空闲连接数
 
 auth:
-  jwt_secret: "CodeGateJWTSecretKeyForTokenSigning2026" # 共享 CodeBench JWT 签名密钥
+  jwt_secret: "ABCDEFGHIJKLMNOPQRSTVUWXYZ0987654321" # 共享 CodeBench JWT 签名密钥（全系统统一单点登录）
 
 defaults:
   default_model: "deepseek-v3"           # 默认保底降级模型
