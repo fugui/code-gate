@@ -1,0 +1,32 @@
+# CodeGate（码界）配置文件示例
+
+server:
+  port: ":8088"                          # 网关监听端口
+  prefix: ""                             # 路由公共前缀，为空表示根路径
+  gin_log: true                          # 是否打印 Gin 访问日志
+  read_timeout: "30m"                    # 读请求超时时间
+  write_timeout: "30m"                   # 写响应超时时间（支持长生成与复杂代码推理）
+  idle_timeout: "120s"                   # 空闲连接复用超时
+  max_header_bytes: 1048576              # 最大请求头大小（1MB）
+
+database:
+  driver: "postgres"                     # 数据库驱动，固定为 postgres
+  host: "127.0.0.1"                      # PostgreSQL 主机地址
+  port: 5432                             # PostgreSQL 端口
+  user: "postgres"                       # 数据库用户名
+  password: "CodeShield618!"             # 数据库密码
+  dbname: "code_gate"                    # 数据库名称（与团队共享 PG 实例）
+  sslmode: "disable"                     # SSL 模式
+  timezone: "Asia/Shanghai"              # 会话时区
+  max_open_conns: 50                     # 最大打开连接数
+  max_idle_conns: 10                     # 最大空闲连接数
+
+auth:
+  jwt_secret: "CodeGateJWTSecretKeyForTokenSigning2026" # 共享 CodeBench JWT 签名密钥
+
+defaults:
+  default_model: "deepseek-v3"           # 默认保底降级模型
+  guest_quota:
+    daily_credits: 50.0                  # 访客默认每日 Credits 额度
+    weekly_credits: 200.0                # 访客默认每周 Credits 额度（为每日额度 4 倍）
+    rate_limit_rpm: 30                   # 访客默认每分钟请求频次上限
