@@ -1,0 +1,315 @@
+/* ===== CodeGate 监控大屏样式 ===== */
+
+.gate-dashboard-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.gate-dashboard-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.gate-dashboard-title-group h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.gate-dashboard-subtitle {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.25rem;
+}
+
+.gate-dashboard-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.gate-dashboard-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.gate-dashboard-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-success);
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: pulseGreen 2s infinite;
+}
+
+@keyframes pulseGreen {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+/* 核心 KPI 卡片栅格 */
+.gate-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.gate-kpi-card {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md, 8px);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.gate-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.gate-kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gate-kpi-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.gate-kpi-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--color-bg-muted);
+  color: var(--color-primary);
+}
+
+.gate-kpi-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-family: 'JetBrains Mono', 'Inter', monospace;
+  line-height: 1.2;
+}
+
+.gate-kpi-sub {
+  font-size: 0.775rem;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 中间与下层两栏栅格 */
+.gate-dashboard-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 960px) {
+  .gate-dashboard-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gate-panel-card {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md, 8px);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.gate-panel-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* SVG 走势图容器 */
+.gate-chart-wrapper {
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.gate-svg-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.gate-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.gate-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.gate-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* 热门模型排行榜 */
+.gate-top-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.gate-model-rank-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.gate-model-rank-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.875rem;
+}
+
+.gate-model-name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.gate-model-stats {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.gate-progress-track {
+  width: 100%;
+  height: 8px;
+  background-color: var(--color-bg-muted);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.gate-progress-bar {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-info, #0284c7));
+  transition: width 0.4s ease;
+}
+
+/* 状态码与异常列表 */
+.gate-status-pills {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.gate-status-pill {
+  flex: 1;
+  min-width: 100px;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--color-bg-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.gate-status-pill-title {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.gate-status-pill-val {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.gate-status-pill--success .gate-status-pill-val {
+  color: var(--color-success);
+}
+
+.gate-status-pill--warn .gate-status-pill-val {
+  color: var(--color-warning);
+}
+
+.gate-status-pill--error .gate-status-pill-val {
+  color: var(--color-danger);
+}
+
+/* 异常日志列表 */
+.gate-error-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.gate-error-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--color-bg-muted);
+  font-size: 0.8rem;
+  border-left: 3px solid var(--color-danger);
+}
+
+.gate-error-code {
+  font-weight: 700;
+  color: var(--color-danger);
+  font-family: monospace;
+}
+
+.gate-empty-box {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}

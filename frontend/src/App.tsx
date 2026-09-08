@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Header } from './components/Header'
 import { ChatPage } from './pages/Chat'
 import { KeysPage } from './pages/Keys'
+import { DashboardPage } from './pages/Dashboard'
 import { AdminUsersPage } from './pages/AdminUsers'
 import { AdminBackendsPage } from './pages/AdminBackends'
 import { LogsPage } from './pages/Logs'
@@ -24,6 +25,8 @@ export const App: React.FC<AppProps> = ({ isEmbedded = false }) => {
           <Route path="/gate/chat" element={<ChatPage />} />
           <Route path="/keys" element={<KeysPage />} />
           <Route path="/gate/keys" element={<KeysPage />} />
+          <Route path="/admin/dashboard" element={<DashboardPage />} />
+          <Route path="/gate/admin/dashboard" element={<DashboardPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/gate/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/backends" element={<AdminBackendsPage />} />
@@ -46,6 +49,7 @@ export const App: React.FC<AppProps> = ({ isEmbedded = false }) => {
             <Route path="/" element={<Navigate to="/chat" replace />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/keys" element={<KeysPage />} />
+            <Route path="/admin/dashboard" element={<DashboardPage />} />
             <Route path="/admin/users" element={<AdminUsersPage />} />
             <Route path="/admin/backends" element={<AdminBackendsPage />} />
             <Route path="/logs" element={<LogsPage />} />

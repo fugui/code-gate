@@ -104,6 +104,9 @@ func main() {
 			return false
 		},
 		RegisterRoutes: func(r *gin.Engine) {
+			// 全局动态客户端安全过滤：阻断恶意扫描器与非法爬虫
+			r.Use(api.ClientFilterMiddleware(cfg.Security.BlockedUserAgents))
+
 			// 免密开放接口：健康探针与模型列表只读元数据
 			r.GET("/health", func(c *gin.Context) {
 				c.JSON(http.StatusOK, gin.H{
@@ -134,6 +137,9 @@ func main() {
 				adminGroup := v1Group.Group("/admin")
 				adminGroup.Use(api.RequireAdmin())
 				{
+					// 监控大屏全景指标
+					adminGroup.GET("/dashboard", api.HandleAdminGetDashboard)
+
 					// 用户与配额管理
 					adminGroup.GET("/users", api.HandleAdminListUsers)
 					adminGroup.PUT("/users/:id/quota", api.HandleAdminUpdateUserQuota)

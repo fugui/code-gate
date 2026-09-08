@@ -30,3 +30,12 @@ defaults:
     daily_credits: 50.0                  # 访客默认每日 Credits 额度
     weekly_credits: 200.0                # 访客默认每周 Credits 额度（为每日额度 4 倍）
     rate_limit_rpm: 30                   # 访客默认每分钟请求频次上限
+
+security:
+  blocked_user_agents:                   # 恶意扫描器与非法爬虫黑名单
+    - "sqlmap"
+    - "nikto"
+    - "acunetix"
+    - "havij"
+    - "masscan"
+

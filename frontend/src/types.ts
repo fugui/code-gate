@@ -117,3 +117,43 @@ export interface ChatMessage {
     cacheHit?: number
   }
 }
+
+export interface DashboardSummary {
+  total_requests: number
+  today_requests: number
+  total_credits: number
+  today_credits: number
+  active_users_24h: number
+  total_backends: number
+  healthy_backends: number
+  avg_latency_ms: number
+}
+
+export interface HourlyTrendItem {
+  hour: string
+  requests: number
+  cost_credits: number
+  errors: number
+}
+
+export interface TopModelItem {
+  model: string
+  count: number
+  cost_credits: number
+  percentage: number
+}
+
+export interface StatusCounts {
+  status_2xx: number
+  status_4xx: number
+  status_5xx: number
+}
+
+export interface DashboardData {
+  summary: DashboardSummary
+  hourly_trends: HourlyTrendItem[]
+  top_models: TopModelItem[]
+  status_counts: StatusCounts
+  recent_errors: AccessLogItem[]
+}
+

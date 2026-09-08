@@ -25,6 +25,11 @@ export const gateMenuConfig: ModuleMenuConfig = {
       adminOnly: true,
       items: [
         {
+          path: '/admin/dashboard',
+          label: '监控大屏',
+          icon: 'M3 3v18h18M9 15l3-3 4 4 5-8',
+        },
+        {
           path: '/admin/users',
           label: '用户配额台账',
           icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',

@@ -3,9 +3,11 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"code-common/backend/auth"
 	"code-gate/internal/models"
@@ -413,4 +415,183 @@ func HandleAdminDeleteModel(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "逻辑模型已删除"})
 }
+
+// DashboardSummaryDTO 聚合指标概要卡
+type DashboardSummaryDTO struct {
+	TotalRequests   int64   `json:"total_requests"`
+	TodayRequests   int64   `json:"today_requests"`
+	TotalCredits    float64 `json:"total_credits"`
+	TodayCredits    float64 `json:"today_credits"`
+	ActiveUsers24h  int64   `json:"active_users_24h"`
+	TotalBackends   int     `json:"total_backends"`
+	HealthyBackends int     `json:"healthy_backends"`
+	AvgLatencyMS    int64   `json:"avg_latency_ms"`
+}
+
+// HourlyTrendDTO 小时级趋势点
+type HourlyTrendDTO struct {
+	Hour        string  `json:"hour"`
+	Requests    int64   `json:"requests"`
+	CostCredits float64 `json:"cost_credits"`
+	Errors      int64   `json:"errors"`
+}
+
+// TopModelDTO 热门模型排行项
+type TopModelDTO struct {
+	Model       string  `json:"model"`
+	Count       int64   `json:"count"`
+	CostCredits float64 `json:"cost_credits"`
+	Percentage  float64 `json:"percentage"`
+}
+
+// StatusCountsDTO 状态码分布
+type StatusCountsDTO struct {
+	Status2xx int64 `json:"status_2xx"`
+	Status4xx int64 `json:"status_4xx"`
+	Status5xx int64 `json:"status_5xx"`
+}
+
+// DashboardDataDTO 监控大屏完整数据模型
+type DashboardDataDTO struct {
+	Summary      DashboardSummaryDTO `json:"summary"`
+	HourlyTrends []HourlyTrendDTO    `json:"hourly_trends"`
+	TopModels    []TopModelDTO       `json:"top_models"`
+	StatusCounts StatusCountsDTO     `json:"status_counts"`
+	RecentErrors []models.AccessLog  `json:"recent_errors"`
+}
+
+// HandleAdminGetDashboard 管理员监控大屏聚合数据接口
+func HandleAdminGetDashboard(c *gin.Context) {
+	db := store.GetDB()
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "数据库未连接"})
+		return
+	}
+
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	past24h := now.Add(-24 * time.Hour)
+
+	var data DashboardDataDTO
+
+	// 1. Summary 指标统计
+	_ = db.Model(&models.AccessLog{}).Count(&data.Summary.TotalRequests)
+	_ = db.Model(&models.AccessLog{}).Where("created_at >= ?", todayStart).Count(&data.Summary.TodayRequests)
+
+	var totalCredits float64
+	_ = db.Model(&models.AccessLog{}).Select("COALESCE(SUM(cost_credits), 0)").Scan(&totalCredits)
+	data.Summary.TotalCredits = math.Round(totalCredits*100) / 100
+
+	var todayCredits float64
+	_ = db.Model(&models.AccessLog{}).Where("created_at >= ?", todayStart).Select("COALESCE(SUM(cost_credits), 0)").Scan(&todayCredits)
+	data.Summary.TodayCredits = math.Round(todayCredits*100) / 100
+
+	_ = db.Model(&models.AccessLog{}).Where("created_at >= ?", past24h).Distinct("user_id").Count(&data.Summary.ActiveUsers24h)
+
+	var avgLatency float64
+	_ = db.Model(&models.AccessLog{}).Where("created_at >= ?", past24h).Select("COALESCE(AVG(duration_ms), 0)").Scan(&avgLatency)
+	data.Summary.AvgLatencyMS = int64(avgLatency)
+
+	var backends []models.Backend
+	if err := db.Find(&backends).Error; err == nil {
+		data.Summary.TotalBackends = len(backends)
+		healthy := 0
+		for _, b := range backends {
+			if b.IsHealthy {
+				healthy++
+			}
+		}
+		data.Summary.HealthyBackends = healthy
+	}
+
+	// 2. 过去 24 小时逐小时趋势
+	type HourlyRow struct {
+		Hr       string  `gorm:"column:hr"`
+		ReqCount int64   `gorm:"column:req_count"`
+		Credits  float64 `gorm:"column:credits"`
+		ErrCount int64   `gorm:"column:err_count"`
+	}
+
+	var hourlyRows []HourlyRow
+	_ = db.Model(&models.AccessLog{}).
+		Select("to_char(created_at, 'YYYY-MM-DD HH24:00') as hr, count(*) as req_count, COALESCE(sum(cost_credits), 0) as credits, count(CASE WHEN status_code >= 400 THEN 1 END) as err_count").
+		Where("created_at >= ?", past24h).
+		Group("hr").
+		Scan(&hourlyRows)
+
+	hourlyMap := make(map[string]HourlyRow, len(hourlyRows))
+	for _, r := range hourlyRows {
+		hourlyMap[r.Hr] = r
+	}
+
+	data.HourlyTrends = make([]HourlyTrendDTO, 0, 24)
+	for i := 23; i >= 0; i-- {
+		slotTime := now.Add(-time.Duration(i) * time.Hour)
+		slotKey := slotTime.Format("2006-01-02 15:00")
+		slotDisplay := slotTime.Format("15:00")
+
+		if row, exists := hourlyMap[slotKey]; exists {
+			data.HourlyTrends = append(data.HourlyTrends, HourlyTrendDTO{
+				Hour:        slotDisplay,
+				Requests:    row.ReqCount,
+				CostCredits: math.Round(row.Credits*100) / 100,
+				Errors:      row.ErrCount,
+			})
+		} else {
+			data.HourlyTrends = append(data.HourlyTrends, HourlyTrendDTO{
+				Hour:        slotDisplay,
+				Requests:    0,
+				CostCredits: 0,
+				Errors:      0,
+			})
+		}
+	}
+
+	// 3. 热门模型 TOP 5 (过去 24 小时)
+	type TopModelRow struct {
+		Model   string  `gorm:"column:model"`
+		Count   int64   `gorm:"column:count"`
+		Credits float64 `gorm:"column:credits"`
+	}
+	var topRows []TopModelRow
+	_ = db.Model(&models.AccessLog{}).
+		Select("model, count(*) as count, COALESCE(sum(cost_credits), 0) as credits").
+		Where("created_at >= ?", past24h).
+		Group("model").
+		Order("count DESC").
+		Limit(5).
+		Scan(&topRows)
+
+	var past24hTotalRequests int64
+	for _, tr := range topRows {
+		past24hTotalRequests += tr.Count
+	}
+
+	data.TopModels = make([]TopModelDTO, 0, len(topRows))
+	for _, tr := range topRows {
+		pct := 0.0
+		if past24hTotalRequests > 0 {
+			pct = math.Round((float64(tr.Count)/float64(past24hTotalRequests))*1000) / 10
+		}
+		data.TopModels = append(data.TopModels, TopModelDTO{
+			Model:       tr.Model,
+			Count:       tr.Count,
+			CostCredits: math.Round(tr.Credits*100) / 100,
+			Percentage:  pct,
+		})
+	}
+
+	// 4. 状态分布 (最近 24 小时)
+	_ = db.Model(&models.AccessLog{}).Where("created_at >= ? AND status_code >= 200 AND status_code < 300", past24h).Count(&data.StatusCounts.Status2xx)
+	_ = db.Model(&models.AccessLog{}).Where("created_at >= ? AND status_code >= 400 AND status_code < 500", past24h).Count(&data.StatusCounts.Status4xx)
+	_ = db.Model(&models.AccessLog{}).Where("created_at >= ? AND status_code >= 500", past24h).Count(&data.StatusCounts.Status5xx)
+
+	// 5. 最近异常错误日志 (TOP 5)
+	_ = db.Model(&models.AccessLog{}).Where("status_code >= 400").Order("id DESC").Limit(5).Find(&data.RecentErrors)
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": data,
+	})
+}
+
 

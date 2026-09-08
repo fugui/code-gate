@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Shield, MessageSquare, Key, Users, Server, FileText, Sun, Moon } from 'lucide-react'
+import { Shield, MessageSquare, Key, Users, Server, FileText, Sun, Moon, BarChart3 } from 'lucide-react'
 import { useTheme } from '@code/common'
 import { fetchUserProfile } from '../api/client'
 import { UserProfile } from '../types'
@@ -65,6 +65,10 @@ export const Header: React.FC = () => {
           </Link>
           {profile?.is_admin && (
             <>
+              <Link to="/admin/dashboard" className={`gate-nav-link ${location.pathname === '/admin/dashboard' ? 'active' : ''}`}>
+                <BarChart3 size={16} />
+                <span>监控大屏</span>
+              </Link>
               <Link to="/admin/users" className={`gate-nav-link ${location.pathname === '/admin/users' ? 'active' : ''}`}>
                 <Users size={16} />
                 <span>用户配额</span>

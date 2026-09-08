@@ -65,3 +65,46 @@ func TestDualCycleQuotaEngine(t *testing.T) {
 	_ = db.Where("user_id = ?", testUserID).Delete(&models.GateUserQuota{})
 	_ = db.Where("user_id = ?", testUserID).Delete(&models.CreditsWallet{})
 }
+
+func TestCheckTimeRanges(t *testing.T) {
+	// 1. 全天通配符或空
+	if err := checkTimeRanges([]byte(`["*"]`), time.Now()); err != nil {
+		t.Errorf("通配符 * 应当放行: %v", err)
+	}
+	if err := checkTimeRanges([]byte(`[]`), time.Now()); err != nil {
+		t.Errorf("空时间段应当放行: %v", err)
+	}
+
+	// 2. 常规时段: 09:00 - 18:00
+	rangesNormal := []byte(`["09:00-18:00"]`)
+	tIn := time.Date(2026, 9, 8, 14, 30, 0, 0, time.Local)
+	tOutEarly := time.Date(2026, 9, 8, 8, 59, 0, 0, time.Local)
+	tOutLate := time.Date(2026, 9, 8, 18, 01, 0, 0, time.Local)
+
+	if err := checkTimeRanges(rangesNormal, tIn); err != nil {
+		t.Errorf("14:30 应当在 09:00-18:00 内放行: %v", err)
+	}
+	if err := checkTimeRanges(rangesNormal, tOutEarly); err == nil {
+		t.Errorf("08:59 不在 09:00-18:00 内应当拦截")
+	}
+	if err := checkTimeRanges(rangesNormal, tOutLate); err == nil {
+		t.Errorf("18:01 不在 09:00-18:00 内应当拦截")
+	}
+
+	// 3. 跨午夜时段: 22:00 - 06:00
+	rangesMidnight := []byte(`["22:00-06:00"]`)
+	tNight := time.Date(2026, 9, 8, 23, 15, 0, 0, time.Local)
+	tEarlyMorning := time.Date(2026, 9, 8, 5, 45, 0, 0, time.Local)
+	tDaytime := time.Date(2026, 9, 8, 12, 0, 0, 0, time.Local)
+
+	if err := checkTimeRanges(rangesMidnight, tNight); err != nil {
+		t.Errorf("23:15 应当在 22:00-06:00 内放行: %v", err)
+	}
+	if err := checkTimeRanges(rangesMidnight, tEarlyMorning); err != nil {
+		t.Errorf("05:45 应当在 22:00-06:00 内放行: %v", err)
+	}
+	if err := checkTimeRanges(rangesMidnight, tDaytime); err == nil {
+		t.Errorf("12:00 不在 22:00-06:00 内应当拦截")
+	}
+}
+

@@ -1,4 +1,4 @@
-import { UserProfile, APIKeyItem, ModelItem, BackendItem, QuotaPolicyItem, UserQuotaDTO, AccessLogItem } from '../types'
+import { UserProfile, APIKeyItem, ModelItem, BackendItem, QuotaPolicyItem, UserQuotaDTO, AccessLogItem, DashboardData } from '../types'
 
 export const getBaseApiPrefix = (): string => {
   if (typeof window !== 'undefined') {
@@ -157,3 +157,10 @@ export async function fetchAdminLogs(
   if (statusCode) params.append('statusCode', statusCode)
   return apiRequest(`${getBaseApiPrefix()}/admin/logs?${params.toString()}`)
 }
+
+// 管理员：获取监控大屏全景指标
+export async function fetchAdminDashboard(): Promise<DashboardData> {
+  const res = await apiRequest<{ data: DashboardData }>(`${getBaseApiPrefix()}/admin/dashboard`)
+  return res.data
+}
+

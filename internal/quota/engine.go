@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"code-gate/internal/models"
 	"code-gate/internal/store"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -17,6 +20,7 @@ var (
 	ErrWeeklyQuotaExceeded = errors.New("已达到本周 Credits 算力配额上限")
 	ErrRateLimitExceeded   = errors.New("触发每分钟速率限制 (RPM)，请稍后重试")
 	ErrModelNotAllowed     = errors.New("当前配额策略未授权访问该模型")
+	ErrTimeRangeNotAllowed = errors.New("当前配额策略限制仅在指定时间段内可用")
 )
 
 // Engine 双周期弹性配额与限流引擎
@@ -99,11 +103,18 @@ func (e *Engine) CheckQuota(
 		}
 	}
 
-	// 3. 跨日与跨周重置检测
+	// 3. 可用时间段策略管控 (仅对非管理员策略生效)
 	now := time.Now()
+	if quota.Policy != nil && len(quota.Policy.TimeRanges) > 0 {
+		if err := checkTimeRanges(quota.Policy.TimeRanges, now); err != nil {
+			return quota, wallet, err
+		}
+	}
+
+	// 4. 跨日与跨周重置检测
 	e.checkAndResetCycle(db, wallet, now)
 
-	// 4. 双周期剩余 Credits 额度判定
+	// 5. 双周期剩余 Credits 额度判定
 	if wallet.DailyConsumed >= dailyLimit {
 		return quota, wallet, fmt.Errorf("%w (已消耗: %.2f / 上限: %.2f)", ErrDailyQuotaExceeded, wallet.DailyConsumed, dailyLimit)
 	}
@@ -111,7 +122,7 @@ func (e *Engine) CheckQuota(
 		return quota, wallet, fmt.Errorf("%w (已消耗: %.2f / 上限: %.2f)", ErrWeeklyQuotaExceeded, wallet.WeeklyConsumed, weeklyLimit)
 	}
 
-	// 5. 内存滑动窗口 RPM 限流校验
+	// 6. 内存滑动窗口 RPM 限流校验
 	if rpm > 0 && !e.allowRPM(userID, rpm, now) {
 		return quota, wallet, fmt.Errorf("%w (上限: %d 次/分钟)", ErrRateLimitExceeded, rpm)
 	}
@@ -189,3 +200,73 @@ func (e *Engine) startCleanupLoop(interval time.Duration) {
 		})
 	}
 }
+
+// checkTimeRanges 校验指定时间是否在允许的时间段列表中
+// 支持常规区间 (如 "09:00-18:00") 与跨午夜区间 (如 "22:00-06:00")；若包含 "*" 或列表为空则全天放行
+func checkTimeRanges(rawJSON datatypes.JSON, now time.Time) error {
+	if len(rawJSON) == 0 {
+		return nil
+	}
+	var ranges []string
+	if err := json.Unmarshal(rawJSON, &ranges); err != nil {
+		return nil
+	}
+	if len(ranges) == 0 {
+		return nil
+	}
+
+	curMin := now.Hour()*60 + now.Minute()
+	matched := false
+
+	for _, tr := range ranges {
+		tr = strings.TrimSpace(tr)
+		if tr == "" || tr == "*" {
+			return nil
+		}
+		parts := strings.Split(tr, "-")
+		if len(parts) != 2 {
+			continue
+		}
+		startMin, err1 := parseHourMinute(strings.TrimSpace(parts[0]))
+		endMin, err2 := parseHourMinute(strings.TrimSpace(parts[1]))
+		if err1 != nil || err2 != nil {
+			continue
+		}
+
+		if startMin <= endMin {
+			// 同一天内区间 (如 09:00-18:00)
+			if curMin >= startMin && curMin <= endMin {
+				matched = true
+				break
+			}
+		} else {
+			// 跨午夜区间 (如 22:00-06:00)
+			if curMin >= startMin || curMin <= endMin {
+				matched = true
+				break
+			}
+		}
+	}
+
+	if !matched {
+		return fmt.Errorf("%w: 当前时间 %02d:%02d 不在允许的时间段内 (%v)", ErrTimeRangeNotAllowed, now.Hour(), now.Minute(), ranges)
+	}
+	return nil
+}
+
+func parseHourMinute(s string) (int, error) {
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 {
+		return 0, errors.New("invalid time format")
+	}
+	h, err := strconv.Atoi(parts[0])
+	if err != nil || h < 0 || h > 23 {
+		return 0, errors.New("invalid hour")
+	}
+	m, err := strconv.Atoi(parts[1])
+	if err != nil || m < 0 || m > 59 {
+		return 0, errors.New("invalid minute")
+	}
+	return h*60 + m, nil
+}
+

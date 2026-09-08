@@ -34,12 +34,18 @@ type DefaultsConfig struct {
 	GuestQuota   GuestQuotaConfig `yaml:"guest_quota"`
 }
 
+// SecurityConfig 定义安全与访问控制策略
+type SecurityConfig struct {
+	BlockedUserAgents []string `yaml:"blocked_user_agents"`
+}
+
 // Config CodeGate 全局配置结构体
 type Config struct {
 	Server   ServerConfig                `yaml:"server"`
 	Database commonModels.DatabaseConfig `yaml:"database"`
 	Auth     commonModels.AuthConfig     `yaml:"auth"`
 	Defaults DefaultsConfig              `yaml:"defaults"`
+	Security SecurityConfig              `yaml:"security"`
 }
 
 var (
@@ -75,6 +81,7 @@ func Load(path string) (*Config, error) {
 		Database commonModels.DatabaseConfig `yaml:"database"`
 		Auth     commonModels.AuthConfig     `yaml:"auth"`
 		Defaults DefaultsConfig              `yaml:"defaults"`
+		Security SecurityConfig              `yaml:"security"`
 	}
 
 	if err := yaml.Unmarshal(data, &raw); err != nil {
@@ -91,6 +98,7 @@ func Load(path string) (*Config, error) {
 		Database: raw.Database,
 		Auth:     raw.Auth,
 		Defaults: raw.Defaults,
+		Security: raw.Security,
 	}
 
 	if raw.Server.ReadTimeout != "" {
@@ -136,6 +144,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Defaults.DefaultModel == "" {
 		cfg.Defaults.DefaultModel = "deepseek-v3"
+	}
+	if len(cfg.Security.BlockedUserAgents) == 0 {
+		cfg.Security.BlockedUserAgents = []string{"sqlmap", "nikto", "acunetix", "havij", "masscan"}
 	}
 
 	configLock.Lock()

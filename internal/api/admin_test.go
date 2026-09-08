@@ -218,3 +218,66 @@ func TestSuperAdminAutoGrantAndAccess(t *testing.T) {
 	// 清理测试用户配额记录
 	_ = db.Where("user_id IN ?", []uint{8888, 9999}).Delete(&models.GateUserQuota{})
 }
+
+func TestHandleAdminGetDashboard(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg, err := config.Load("../../config.yaml.example")
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+
+	db, err := store.InitDB(cfg)
+	if err != nil {
+		t.Skipf("无法连接本地 PostgreSQL 测试库，跳过大屏接口测试: %v", err)
+		return
+	}
+
+	// 插入一条模拟访问日志
+	mockLog := models.AccessLog{
+		UserID:      1001,
+		ClientIP:    "127.0.0.1",
+		UserAgent:   "Go-Test",
+		Path:        "/v1/chat/completions",
+		Protocol:    "chat",
+		Model:       "deepseek-v3",
+		CostCredits: 1.5,
+		DurationMS:  120,
+		StatusCode:  200,
+		CreatedAt:   time.Now(),
+	}
+	_ = db.Create(&mockLog)
+	defer db.Delete(&mockLog)
+
+	r := gin.New()
+	adminGroup := r.Group("/admin")
+	adminGroup.Use(func(c *gin.Context) {
+		c.Set(auth.ContextIsAdmin, true)
+		c.Next()
+	})
+	adminGroup.Use(RequireAdmin())
+	adminGroup.GET("/dashboard", HandleAdminGetDashboard)
+
+	req, _ := http.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /admin/dashboard 期望 200，实际返回 %d, body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data DashboardDataDTO `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("解析大屏响应 JSON 失败: %v", err)
+	}
+
+	if len(resp.Data.HourlyTrends) != 24 {
+		t.Errorf("24 小时趋势点数量期望为 24，实际为 %d", len(resp.Data.HourlyTrends))
+	}
+	if resp.Data.Summary.TotalRequests <= 0 {
+		t.Errorf("总请求数应大于 0")
+	}
+}
+
