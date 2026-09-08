@@ -140,3 +140,48 @@ func TestMockProxyForwarding(t *testing.T) {
 		t.Fatalf("Mock 代理请求失败，HTTP 状态码: %d, body: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestResponsesProtocolDirectForwarding(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// 模拟支持 responses 协议的后端
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" && r.URL.Path != "/responses" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp-123","output":"Agent output"}`))
+	}))
+	defer mockServer.Close()
+
+	proxyClient := proxy.NewClient(5 * time.Second)
+	backend := &models.Backend{
+		Name:           "mock-responses-backend",
+		BaseURL:        mockServer.URL,
+		MaxConcurrency: 5,
+		IsHealthy:      true,
+	}
+
+	r := gin.New()
+	r.POST("/v1/responses", func(c *gin.Context) {
+		body := []byte(`{"model":"codex-model","input":"Write code"}`)
+		res, err := proxyClient.ForwardResponses(c, backend, body, false)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if res.StatusCode != http.StatusOK {
+			t.Errorf("期望返回 200, 获得 %d", res.StatusCode)
+		}
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/v1/responses", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Responses 直通请求失败: %d, body: %s", w.Code, w.Body.String())
+	}
+}

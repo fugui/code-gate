@@ -7,11 +7,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"code-common/backend/server"
 	"code-gate/internal/api"
 	"code-gate/internal/config"
 	"code-gate/internal/proxy"
+	"code-gate/internal/quota"
+	"code-gate/internal/routing"
 	"code-gate/internal/store"
 	"github.com/gin-gonic/gin"
 )
@@ -51,10 +54,16 @@ func main() {
 		log.Fatalf("[CodeGate] 数据库初始化失败: %v", err)
 	}
 
-	// 2. 初始化核心代理客户端
+	// 2. 初始化核心代理客户端与智能调度组件
 	proxyClient := proxy.NewClient(cfg.Server.WriteTimeout)
+	router := routing.NewRouter()
+	quotaEngine := quota.NewEngine()
 
-	// 3. 基于 code-common/backend/server 脚手架启动微服务
+	// 3. 启动后台协议与健康探活协程
+	prober := routing.NewProber(5 * time.Second)
+	prober.Start(30 * time.Second)
+
+	// 4. 基于 code-common/backend/server 脚手架启动微服务
 	serverOpts := server.Options{
 		ServiceName:       "Code-Gate",
 		Prefix:            cfg.Server.Prefix,
@@ -81,11 +90,14 @@ func main() {
 			}))
 			{
 				v1Group.GET("/models", api.HandleListModels)
-				v1Group.POST("/chat/completions", api.HandleChatCompletions(proxyClient))
+				v1Group.POST("/chat/completions", api.HandleChatCompletions(proxyClient, router, quotaEngine))
+				v1Group.POST("/responses", api.HandleResponses(proxyClient, router, quotaEngine))
 			}
 		},
 		OnShutdown: func(ctx context.Context) {
-			log.Printf("[CodeGate] 正在执行优雅停机与资源释放...")
+			log.Printf("[CodeGate] 正在停止后台探针与释放资源...")
+			prober.Stop()
+			log.Printf("[CodeGate] 优雅停机处理完成")
 		},
 	}
 

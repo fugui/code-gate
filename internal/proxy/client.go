@@ -54,13 +54,33 @@ func (c *Client) ForwardChatCompletions(
 	bodyBytes []byte,
 	isStream bool,
 ) (*ProxyResult, error) {
+	return c.forwardInternal(ctx, backend, "/chat/completions", bodyBytes, isStream)
+}
+
+// ForwardResponses 转发 OpenAI Responses 原生直通请求（专为 Coding Agent 设计）
+func (c *Client) ForwardResponses(
+	ctx *gin.Context,
+	backend *models.Backend,
+	bodyBytes []byte,
+	isStream bool,
+) (*ProxyResult, error) {
+	return c.forwardInternal(ctx, backend, "/responses", bodyBytes, isStream)
+}
+
+func (c *Client) forwardInternal(
+	ctx *gin.Context,
+	backend *models.Backend,
+	subPath string,
+	bodyBytes []byte,
+	isStream bool,
+) (*ProxyResult, error) {
 	startTime := time.Now()
 	res := &ProxyResult{}
 
 	// 目标 URL 拼装
-	targetURL := strings.TrimRight(backend.BaseURL, "/") + "/chat/completions"
+	targetURL := strings.TrimRight(backend.BaseURL, "/") + subPath
 	if !strings.HasSuffix(backend.BaseURL, "/v1") && !strings.Contains(backend.BaseURL, "/v1/") {
-		targetURL = strings.TrimRight(backend.BaseURL, "/") + "/v1/chat/completions"
+		targetURL = strings.TrimRight(backend.BaseURL, "/") + "/v1" + subPath
 	}
 
 	req, err := http.NewRequestWithContext(ctx.Request.Context(), http.MethodPost, targetURL, bytes.NewReader(bodyBytes))
