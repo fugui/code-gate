@@ -32,7 +32,8 @@ logs/
 web/node_modules/
 web/dist/
 frontend/node_modules/
-frontend/dist/
+frontend/dist/*
+!frontend/dist/.gitkeep
 
 # OS and IDE files
 .DS_Store

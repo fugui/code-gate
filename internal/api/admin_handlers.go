@@ -355,3 +355,55 @@ func HandleAdminListLogs(c *gin.Context) {
 		"pageSize": pageSize,
 	})
 }
+
+// HandleAdminListBackends 查询所有物理后端节点
+func HandleAdminListBackends(c *gin.Context) {
+	db := store.GetDB()
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "数据库未连接"})
+		return
+	}
+
+	var backends []models.Backend
+	if err := db.Order("id ASC").Find(&backends).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询后端列表失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": backends})
+}
+
+// HandleAdminDeleteBackend 删除物理后端
+func HandleAdminDeleteBackend(c *gin.Context) {
+	db := store.GetDB()
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "数据库未连接"})
+		return
+	}
+
+	id := c.Param("id")
+	if err := db.Delete(&models.Backend{}, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除后端失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "物理后端已删除"})
+}
+
+// HandleAdminDeleteModel 删除逻辑模型
+func HandleAdminDeleteModel(c *gin.Context) {
+	db := store.GetDB()
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "数据库未连接"})
+		return
+	}
+
+	id := c.Param("id")
+	if err := db.Delete(&models.Model{}, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除模型失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "逻辑模型已删除"})
+}
+

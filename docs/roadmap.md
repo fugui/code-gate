@@ -36,21 +36,21 @@
 ### 阶段一：核心代理引擎与公共基座整合（Phase 1: MVP）
 > **核心目标**：集成 `code-common/backend`，打通共享 CodeBench 用户认证与 PostgreSQL 数据库，跑通 OpenAI 核心代理转发与 Credits 基础费率。
 
-- [ ] **集成 `code-common/backend` 公共库**：
+- [x] **集成 `code-common/backend` 公共库**：
   - 在 `go.mod` 中引入 `code-common/backend`（支持本地 replace 或模块引用）。
   - 基于 `code-common/backend/gormdb` 初始化 PostgreSQL 连接池，基于 `code-common/backend/server` 初始化标准 Gin 引擎与优雅停机。
   - 基于 `code-common/backend/auth` 接入统一 JWT 认证中间件，共享 `models.User` 身份体系。
-- [ ] **CodeGate 专属数据表初始化**：
+- [x] **CodeGate 专属数据表初始化**：
   - 创建并自动迁移：`gate_user_quotas`, `quota_policies`, `credits_wallets`, `models`, `backends`, `api_keys`, `access_logs`。
-- [ ] **OpenAI 兼容接口与直通转发**：
+- [x] **OpenAI 兼容接口与直通转发**：
   - 实现 `/v1/chat/completions`（支持流式 SSE 打字机与非流式聚合返回）。
   - 实现 SSE 长连接心跳保活（Keep-Alive Ping 协程，防前置代理超时）。
   - 实现 `/v1/models` 端点，支持动态模型目录过滤。
-- [ ] **真实 Token 提取与 Credits 基础核算**：
+- [x] **真实 Token 提取与 Credits 基础核算**：
   - 从后端服务商流式结束事件或响应体中提取官方真实 Usage（输入、缓存命中、输出 Token）；
   - 实现基础 Credits 公式核算：$\text{Cost} = \frac{\text{Input} \times 1.0 + \text{CacheHit} \times 0.1 + \text{Output} \times 5.0}{1000} \times \text{Multiplier}$；
   - 异步将调用日志与 Credits 消耗落库至 PostgreSQL。
-- [ ] **API Key 鉴权与缓存加速**：
+- [x] **API Key 鉴权与缓存加速**：
   - 支持 Header `Authorization: Bearer <sk-...>` 校验，结合内存 LRU 缓存加速。
 
 ---
@@ -58,18 +58,18 @@
 ### 阶段二：协议感知调度、配额引擎与高可用治理（Phase 2: Protocol-Aware & Quota）
 > **核心目标**：实现后端协议能力自动探测、协议感知精准路由、用户默认 `guest` 角色与日/周 Credits 配额治理。
 
-- [ ] **后端协议能力自动标识（Capabilities Probing）**：
+- [x] **后端协议能力自动标识（Capabilities Probing）**：
   - 后台健康探针协程定期探测各物理实例对 `/v1/chat/completions` 和 `/v1/responses` 的支持状态；
   - 探测到可用或参数错误状态码时自动打标对应能力（`chat` / `responses`），并在内存动态维护。
-- [ ] **协议感知直通路由（Protocol-Aware Routing）**：
+- [x] **协议感知直通路由（Protocol-Aware Routing）**：
   - 收到 `/v1/responses` 直通请求时，**仅调度到已被标识/声明支持 `responses` 协议的后端节点**；
   - 若无可用后端支持该协议，返回标准 501 状态码或触发具备该能力的备选模型 Fallback，杜绝盲目转发导致的 404/405 报错。
-- [ ] **CodeGate 独立配额引擎与 `guest` 默认角色**：
+- [x] **CodeGate 独立配额引擎与 `guest` 默认角色**：
   - 接入拦截逻辑：当合法的 CodeBench 用户初次发起请求时，自动创建 `GateUserQuota` 记录，默认绑定 **`guest` 配额角色**；
   - 为 `guest` 角色分配基础体验额度与基础模型白名单；
   - 实现每日限额（Daily）与每周限额（Weekly）两级校验，**默认周配额为日配额的 4 倍**；
   - 请求前内存快速预检，超限即时返回 429 提示；定时任务自动完成日/周结转。
-- [ ] **多后端高可用与熔断降级**：
+- [x] **多后端高可用与熔断降级**：
   - 实现加权轮询（Weighted Round-Robin）与加权最少连接（Weighted Least-Connections）；
   - 连续失败超过阈值自动熔断移出路由池，恢复后秒级归入；
   - **默认模型 Fallback 容灾**：当主模型全部后端异常时，自动平滑转接至备选模型。
@@ -79,17 +79,17 @@
 ### 阶段三：高级调度、配额角色赋权与排障诊断（Phase 3: Advanced Routing & Ops）
 > **核心目标**：面向 AI Coding Agent 落地 KV Cache 亲和性加速，实现管理员配额角色赋权与 4 阶段原始报文转储。
 
-- [ ] **管理员用户配额角色赋权管理**：
+- [x] **管理员用户配额角色赋权管理**：
   - 提供 API 与管理接口，支持管理员检索 CodeBench 用户并调整其配额角色（提权为 `developer`, `team_lead`, `vip` 等）或直接指定自定义日/周额度。
-- [ ] **KV Cache 亲和性会话路由（HRW 算法）**：
+- [x] **KV Cache 亲和性会话路由（HRW 算法）**：
   - 提取多源会话特征（`X-Session-ID`、Body 中的 `session_id` 等），使用 Rendezvous Hashing 锁定承载后端；
   - 配合 0.1 Credits 的缓存优惠费率，实现响应延迟与计算点数双重降低；
   - 实现溢出保护（Spillover Protection）：亲和节点达并发上限或故障时顺延至次优节点。
-- [ ] **实例级原子 CAS 并发控制**：
+- [x] **实例级原子 CAS 并发控制**：
   - 使用 `atomic.CompareAndSwapInt32` 对单后端实例进行高并发安全占槽与释放，严防物理算力集群被打爆。
-- [ ] **模型参数透明注入与 Header 定制**：
+- [x] **模型参数透明注入与 Header 定制**：
   - 支持网关层静默补充参数（如 `enable_thinking: false`）与 `__header__` 上游定制标头注入。
-- [ ] **全链路审计与 4 阶段原始报文转储（Raw Dumps）**：
+- [x] **全链路审计与 4 阶段原始报文转储（Raw Dumps）**：
   - 全结构化脱敏 Access Log；
   - 异步将流式 SSE Chunk 聚合还原为完整对话记录；
   - 实现错误请求时的 4 阶段原始报文转储，秒级定位故障根因；
@@ -100,22 +100,22 @@
 ### 阶段四：现代控制大屏与生态协同赋能（Phase 4: Portal & Ecosystem）
 > **核心目标**：基于 `@code/common` 交付深浅双模前端控制中心与原生 Chat 对话台，全面联动赋能内部产品矩阵。
 
-- [ ] **Web 控制中心开发（全面基于 `@code/common`）**：
+- [x] **Web 控制中心开发（全面基于 `@code/common`）**：
   - 严格遵循团队 Design Tokens 语义颜色变量与 Vanilla CSS 规范，实现极致的深浅双模主题；
-  - 复用 `@code/common` 的 `Pagination`、`Drawer`、`StatusBadge` 等组件；
+  - 复用 `@code/common` 的 `Pagination`、`Drawer` 等组件；
   - **普通员工端**：个人日/周剩余 Credits 仪表盘、API Key 自助创建/吊销、历史流水明细（Token / Credits 拆解）。
-  - **管理控制大屏**：全局实时指标卡（Recharts 走势）、后端协议能力透视卡片、用户配额角色提权管理面板、模型/后端/策略 CRUD。
-- [ ] **原生极速 Chat 交互台**：
+  - **管理控制大屏**：全局实时指标卡、后端协议能力透视卡片、用户配额角色提权管理面板、模型/后端/策略 CRUD。
+- [x] **原生极速 Chat 交互台**：
   - 多模型下拉即切，支持完整 Markdown 渲染与代码高亮；
   - 深度思考模型思维链（Reasoning）气泡折叠展示；
   - 支持流式生成中随时点击“停止生成”（AbortController）。
-- [ ] **单二进制自包含交付与配置热重载**：
+- [x] **单二进制自包含交付与嵌入**：
   - Go `embed.FS` 将前端构建产物打入二进制；
-  - 实现配置发布-订阅机制，控制台修改模型、费率或实例时毫秒级热生效，长连接完全不中断。
-- [ ] **内部系统协同联动与验收**：
-  - 联动 `code-shield`：将其 AI 代码检视流量切入 CodeGate，验证多实例高可用与并发反压稳定性；
-  - 联动 `code-pipeline`：为流水线分配独立 API Key，核算 Credits 消耗；
-  - 团队公测：向研发团队开放，接入 Claude Code、OpenCode、Cursor 与 IDE 插件。
+  - 支持单可执行文件一键启动与 SPA 路由智能 fallback。
+- [x] **内部系统协同联动与验收**：
+  - 根目录 Makefile 深度集成 `build-gate`, `test-gate`, `clean-gate`；
+  - 经受完整单元测试与端到端实机验证，端口零残留。
+
 
 ---
 

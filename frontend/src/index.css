@@ -1,0 +1,353 @@
+@import '@code/common/src/styles/theme.css';
+
+/* ===== 全局重置与排版 ===== */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code, pre, kbd {
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
+}
+
+/* ===== 布局容器与导航 ===== */
+.gate-app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: var(--color-bg-base);
+}
+
+.gate-navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  padding: 0 1.5rem;
+  background-color: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-primary);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow-sm);
+}
+
+.gate-logo-area {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+.gate-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.gate-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.gate-nav-link:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.gate-nav-link.active {
+  background-color: var(--color-primary-subtle);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.gate-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* 配额仪表进度胶囊 */
+.gate-quota-capsule {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.8rem;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 9999px;
+  font-size: 0.8rem;
+}
+
+.gate-progress-bar-wrap {
+  width: 60px;
+  height: 6px;
+  background-color: var(--color-border-primary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.gate-progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.gate-progress-bar-fill--green {
+  background-color: var(--color-success);
+}
+
+.gate-progress-bar-fill--yellow {
+  background-color: var(--color-warning);
+}
+
+.gate-progress-bar-fill--red {
+  background-color: var(--color-danger);
+}
+
+/* ===== 页面内容区 ===== */
+.gate-main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== 极速 Chat 对话界面 ===== */
+.gate-chat-layout {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 1rem 1.5rem;
+}
+
+.gate-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.gate-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.gate-message-item {
+  display: flex;
+  gap: 0.85rem;
+  animation: fadeIn 0.2s ease;
+}
+
+.gate-message-item--user {
+  flex-direction: row-reverse;
+}
+
+.gate-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.gate-avatar--user {
+  background-color: var(--color-primary);
+  color: var(--color-text-white);
+}
+
+.gate-avatar--assistant {
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-primary);
+  color: var(--color-primary);
+}
+
+.gate-message-body {
+  max-width: 80%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.gate-bubble {
+  padding: 0.85rem 1.15rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.gate-bubble--user {
+  background-color: var(--color-primary);
+  color: var(--color-text-white);
+  border-bottom-right-radius: 3px;
+}
+
+.gate-bubble--assistant {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border-primary);
+  color: var(--color-text-primary);
+  border-bottom-left-radius: 3px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* 思维链折叠卡片 */
+.gate-thinking-card {
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  background-color: var(--color-bg-muted);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.gate-thinking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+}
+
+.gate-thinking-content {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--color-border-subtle);
+  white-space: pre-wrap;
+  color: var(--color-text-muted);
+  font-family: monospace;
+}
+
+/* 消息元信息 */
+.gate-message-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* 输入框区域 */
+.gate-chat-input-area {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.gate-input-box {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 12px;
+  padding: 0.75rem;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gate-input-box:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-subtle);
+}
+
+.gate-textarea {
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  resize: none;
+  outline: none;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  font-family: inherit;
+  min-height: 56px;
+  max-height: 200px;
+}
+
+.gate-input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+}
+
+/* ===== 通用表格与卡片 ===== */
+.gate-page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.gate-card {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-md, 8px);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.gate-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.gate-table th {
+  background-color: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border-primary);
+}
+
+.gate-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+}
+
+.gate-table tr:hover td {
+  background-color: var(--color-bg-hover);
+}
+
+/* 动画 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

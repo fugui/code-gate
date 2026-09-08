@@ -1,0 +1,138 @@
+import { UserProfile, APIKeyItem, ModelItem, BackendItem, QuotaPolicyItem, UserQuotaDTO, AccessLogItem } from '../types'
+
+const getAuthToken = (): string => {
+  return localStorage.getItem('token') || localStorage.getItem('gate_api_key') || ''
+}
+
+export async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const token = getAuthToken()
+  const headers = new Headers(options.headers || {})
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', token.startsWith('Bearer ') || token.startsWith('sk-') ? token : `Bearer ${token}`)
+  }
+  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const res = await fetch(url, {
+    ...options,
+    headers,
+  })
+
+  if (!res.ok) {
+    let errorMsg = `HTTP 错误: ${res.status}`
+    try {
+      const errJson = await res.json()
+      if (errJson?.error?.message) {
+        errorMsg = errJson.error.message
+      } else if (errJson?.error) {
+        errorMsg = typeof errJson.error === 'string' ? errJson.error : JSON.stringify(errJson.error)
+      } else if (errJson?.message) {
+        errorMsg = errJson.message
+      }
+    } catch {
+      // ignore json parse error
+    }
+    throw new Error(errorMsg)
+  }
+
+  return res.json()
+}
+
+// 获取个人配额资产
+export async function fetchUserProfile(): Promise<UserProfile> {
+  const res = await apiRequest<{ data: UserProfile }>('/v1/user/profile')
+  return res.data
+}
+
+// 获取 API Keys
+export async function fetchUserKeys(): Promise<APIKeyItem[]> {
+  const res = await apiRequest<{ data: APIKeyItem[] }>('/v1/user/keys')
+  return res.data
+}
+
+// 创建 API Key
+export async function createAPIKey(name: string, expiresIn: number): Promise<APIKeyItem & { raw_key: string }> {
+  const res = await apiRequest<{ data: APIKeyItem & { raw_key: string } }>('/v1/user/keys', {
+    method: 'POST',
+    body: JSON.stringify({ name, expires_in: expiresIn }),
+  })
+  return res.data
+}
+
+// 删除 API Key
+export async function deleteAPIKey(id: number): Promise<void> {
+  await apiRequest(`/v1/user/keys/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+// 获取模型列表
+export async function fetchModels(): Promise<ModelItem[]> {
+  const res = await apiRequest<{ data: ModelItem[] }>('/v1/models')
+  return res.data
+}
+
+// 管理员：获取用户列表
+export async function fetchAdminUsers(page = 1, pageSize = 25, search = ''): Promise<{ data: UserQuotaDTO[]; total: number }> {
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  })
+  if (search) params.append('search', search)
+  return apiRequest(`/v1/admin/users?${params.toString()}`)
+}
+
+// 管理员：调整用户配额
+export async function updateUserQuota(
+  userId: number,
+  payload: { role: string; custom_daily_credits?: number; custom_weekly_credits?: number }
+): Promise<void> {
+  await apiRequest(`/v1/admin/users/${userId}/quota`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+// 管理员：查询策略
+export async function fetchAdminPolicies(): Promise<QuotaPolicyItem[]> {
+  const res = await apiRequest<{ data: QuotaPolicyItem[] }>('/v1/admin/policies')
+  return res.data
+}
+
+// 管理员：查询后端
+export async function fetchAdminBackends(): Promise<BackendItem[]> {
+  const res = await apiRequest<{ data: BackendItem[] }>('/v1/admin/backends')
+  return res.data
+}
+
+// 管理员：保存后端
+export async function saveAdminBackend(backend: Partial<BackendItem>): Promise<void> {
+  await apiRequest('/v1/admin/backends', {
+    method: 'POST',
+    body: JSON.stringify(backend),
+  })
+}
+
+// 管理员：删除后端
+export async function deleteAdminBackend(id: number): Promise<void> {
+  await apiRequest(`/v1/admin/backends/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+// 管理员：查询日志
+export async function fetchAdminLogs(
+  page = 1,
+  pageSize = 25,
+  model = '',
+  statusCode = ''
+): Promise<{ data: AccessLogItem[]; total: number }> {
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  })
+  if (model) params.append('model', model)
+  if (statusCode) params.append('statusCode', statusCode)
+  return apiRequest(`/v1/admin/logs?${params.toString()}`)
+}

@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"embed"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"code-common/backend/server"
@@ -19,6 +21,9 @@ import (
 	"code-gate/internal/store"
 	"github.com/gin-gonic/gin"
 )
+
+//go:embed all:frontend/dist
+var frontendFS embed.FS
 
 var (
 	Version   = "dev"
@@ -77,6 +82,21 @@ func main() {
 		WriteTimeout:      cfg.Server.WriteTimeout,
 		IdleTimeout:       cfg.Server.IdleTimeout,
 		MaxHeaderBytes:    cfg.Server.MaxHeaderBytes,
+		FrontendFS:        &frontendFS,
+		FrontendDistPath:  "frontend/dist",
+		ExtraNoRoute: func(c *gin.Context) bool {
+			if strings.HasPrefix(c.Request.URL.Path, "/v1") {
+				c.JSON(http.StatusNotFound, gin.H{
+					"error": gin.H{
+						"message": "API endpoint not found",
+						"type":    "invalid_request_error",
+						"code":    "not_found",
+					},
+				})
+				return true
+			}
+			return false
+		},
 		RegisterRoutes: func(r *gin.Engine) {
 			// 免密健康探针接口
 			r.GET("/health", func(c *gin.Context) {
@@ -93,20 +113,39 @@ func main() {
 				return cfg.Auth.JWTSecret
 			}))
 			{
+				// OpenAI 协议核心直通接口
 				v1Group.GET("/models", api.HandleListModels)
 				v1Group.POST("/chat/completions", api.HandleChatCompletions(proxyClient, router, quotaEngine))
 				v1Group.POST("/responses", api.HandleResponses(proxyClient, router, quotaEngine))
+
+				// 用户个人配额与 API Key 管理
+				v1Group.GET("/user/profile", api.HandleGetUserProfile)
+				v1Group.GET("/user/keys", api.HandleListUserKeys)
+				v1Group.POST("/user/keys", api.HandleCreateUserKey)
+				v1Group.DELETE("/user/keys/:id", api.HandleDeleteUserKey)
 
 				// 管理员受保护管理路由组
 				adminGroup := v1Group.Group("/admin")
 				adminGroup.Use(api.RequireAdmin())
 				{
+					// 用户与配额管理
 					adminGroup.GET("/users", api.HandleAdminListUsers)
 					adminGroup.PUT("/users/:id/quota", api.HandleAdminUpdateUserQuota)
+
+					// 策略定义
 					adminGroup.GET("/policies", api.HandleAdminListPolicies)
 					adminGroup.POST("/policies", api.HandleAdminSavePolicy)
+
+					// 逻辑模型管理
 					adminGroup.POST("/models", api.HandleAdminSaveModel)
+					adminGroup.DELETE("/models/:id", api.HandleAdminDeleteModel)
+
+					// 物理后端实例管理与探活状态
+					adminGroup.GET("/backends", api.HandleAdminListBackends)
 					adminGroup.POST("/backends", api.HandleAdminSaveBackend)
+					adminGroup.DELETE("/backends/:id", api.HandleAdminDeleteBackend)
+
+					// 审计日志检索
 					adminGroup.GET("/logs", api.HandleAdminListLogs)
 				}
 			}
