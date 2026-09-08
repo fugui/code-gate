@@ -73,9 +73,14 @@ func main() {
 	cleanupStopChan := audit.StartLogCleanupTask(store.GetDB(), 7, 24*time.Hour)
 
 	// 5. 基于 code-common/backend/server 脚手架启动微服务
+	servicePrefix := cfg.Server.Prefix
+	if servicePrefix == "" {
+		servicePrefix = "gate"
+	}
+
 	serverOpts := server.Options{
 		ServiceName:       "Code-Gate",
-		Prefix:            cfg.Server.Prefix,
+		Prefix:            servicePrefix,
 		Port:              cfg.Server.Port,
 		GinLog:            cfg.Server.GinLog,
 		ReadTimeout:       cfg.Server.ReadTimeout,
@@ -85,7 +90,8 @@ func main() {
 		FrontendFS:        &frontendFS,
 		FrontendDistPath:  "frontend/dist",
 		ExtraNoRoute: func(c *gin.Context) bool {
-			if strings.HasPrefix(c.Request.URL.Path, "/v1") {
+			p := c.Request.URL.Path
+			if strings.HasPrefix(p, "/gate/v1") || strings.HasPrefix(p, "/v1") {
 				c.JSON(http.StatusNotFound, gin.H{
 					"error": gin.H{
 						"message": "API endpoint not found",

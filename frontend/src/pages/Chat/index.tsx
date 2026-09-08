@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Send, Square, Bot, User, Sparkles, ChevronDown, ChevronRight, Zap } from 'lucide-react'
-import { fetchModels } from '../../api/client'
+import { fetchModels, getBaseApiPrefix } from '../../api/client'
 import { ModelItem, ChatMessage } from '../../types'
 
 export const ChatPage: React.FC = () => {
@@ -90,7 +90,7 @@ export const ChatPage: React.FC = () => {
         headers['Authorization'] = token.startsWith('Bearer ') || token.startsWith('sk-') ? token : `Bearer ${token}`
       }
 
-      const res = await fetch('/v1/chat/completions', {
+      const res = await fetch(`${getBaseApiPrefix()}/chat/completions`, {
         method: 'POST',
         headers,
         signal: controller.signal,

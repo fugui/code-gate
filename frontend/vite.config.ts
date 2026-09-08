@@ -1,13 +1,27 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import federation from '@originjs/vite-plugin-federation'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    federation({
+      name: 'gate',
+      filename: 'remoteEntry.js',
+      exposes: {
+        './App': './src/App.tsx',
+        './menu': './src/menu.ts',
+      },
+      shared: ['react', 'react-dom', 'react-router-dom'],
+    }),
+  ],
+  base: process.env.VITE_BASE_PATH || '/gate/',
   build: {
     target: 'esnext',
+    minify: 'esbuild',
+    cssCodeSplit: false,
     outDir: 'dist',
-    chunkSizeWarningLimit: 1000,
   },
   server: {
     port: 5178,

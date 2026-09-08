@@ -1,5 +1,14 @@
 import { UserProfile, APIKeyItem, ModelItem, BackendItem, QuotaPolicyItem, UserQuotaDTO, AccessLogItem } from '../types'
 
+export const getBaseApiPrefix = (): string => {
+  if (typeof window !== 'undefined') {
+    if ((window as any).__POWERED_BY_PORTAL__ || window.location.pathname.startsWith('/gate')) {
+      return '/gate/v1'
+    }
+  }
+  return '/v1'
+}
+
 const getAuthToken = (): string => {
   return localStorage.getItem('token') || localStorage.getItem('gate_api_key') || ''
 }
@@ -41,19 +50,19 @@ export async function apiRequest<T>(url: string, options: RequestInit = {}): Pro
 
 // 获取个人配额资产
 export async function fetchUserProfile(): Promise<UserProfile> {
-  const res = await apiRequest<{ data: UserProfile }>('/v1/user/profile')
+  const res = await apiRequest<{ data: UserProfile }>(`${getBaseApiPrefix()}/user/profile`)
   return res.data
 }
 
 // 获取 API Keys
 export async function fetchUserKeys(): Promise<APIKeyItem[]> {
-  const res = await apiRequest<{ data: APIKeyItem[] }>('/v1/user/keys')
+  const res = await apiRequest<{ data: APIKeyItem[] }>(`${getBaseApiPrefix()}/user/keys`)
   return res.data
 }
 
 // 创建 API Key
 export async function createAPIKey(name: string, expiresIn: number): Promise<APIKeyItem & { raw_key: string }> {
-  const res = await apiRequest<{ data: APIKeyItem & { raw_key: string } }>('/v1/user/keys', {
+  const res = await apiRequest<{ data: APIKeyItem & { raw_key: string } }>(`${getBaseApiPrefix()}/user/keys`, {
     method: 'POST',
     body: JSON.stringify({ name, expires_in: expiresIn }),
   })
@@ -62,14 +71,14 @@ export async function createAPIKey(name: string, expiresIn: number): Promise<API
 
 // 删除 API Key
 export async function deleteAPIKey(id: number): Promise<void> {
-  await apiRequest(`/v1/user/keys/${id}`, {
+  await apiRequest(`${getBaseApiPrefix()}/user/keys/${id}`, {
     method: 'DELETE',
   })
 }
 
 // 获取模型列表
 export async function fetchModels(): Promise<ModelItem[]> {
-  const res = await apiRequest<{ data: ModelItem[] }>('/v1/models')
+  const res = await apiRequest<{ data: ModelItem[] }>(`${getBaseApiPrefix()}/models`)
   return res.data
 }
 
@@ -80,7 +89,7 @@ export async function fetchAdminUsers(page = 1, pageSize = 25, search = ''): Pro
     pageSize: String(pageSize),
   })
   if (search) params.append('search', search)
-  return apiRequest(`/v1/admin/users?${params.toString()}`)
+  return apiRequest(`${getBaseApiPrefix()}/admin/users?${params.toString()}`)
 }
 
 // 管理员：调整用户配额
@@ -88,7 +97,7 @@ export async function updateUserQuota(
   userId: number,
   payload: { role: string; custom_daily_credits?: number; custom_weekly_credits?: number }
 ): Promise<void> {
-  await apiRequest(`/v1/admin/users/${userId}/quota`, {
+  await apiRequest(`${getBaseApiPrefix()}/admin/users/${userId}/quota`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   })
@@ -96,19 +105,19 @@ export async function updateUserQuota(
 
 // 管理员：查询策略
 export async function fetchAdminPolicies(): Promise<QuotaPolicyItem[]> {
-  const res = await apiRequest<{ data: QuotaPolicyItem[] }>('/v1/admin/policies')
+  const res = await apiRequest<{ data: QuotaPolicyItem[] }>(`${getBaseApiPrefix()}/admin/policies`)
   return res.data
 }
 
 // 管理员：查询后端
 export async function fetchAdminBackends(): Promise<BackendItem[]> {
-  const res = await apiRequest<{ data: BackendItem[] }>('/v1/admin/backends')
+  const res = await apiRequest<{ data: BackendItem[] }>(`${getBaseApiPrefix()}/admin/backends`)
   return res.data
 }
 
 // 管理员：保存后端
 export async function saveAdminBackend(backend: Partial<BackendItem>): Promise<void> {
-  await apiRequest('/v1/admin/backends', {
+  await apiRequest(`${getBaseApiPrefix()}/admin/backends`, {
     method: 'POST',
     body: JSON.stringify(backend),
   })
@@ -116,7 +125,7 @@ export async function saveAdminBackend(backend: Partial<BackendItem>): Promise<v
 
 // 管理员：删除后端
 export async function deleteAdminBackend(id: number): Promise<void> {
-  await apiRequest(`/v1/admin/backends/${id}`, {
+  await apiRequest(`${getBaseApiPrefix()}/admin/backends/${id}`, {
     method: 'DELETE',
   })
 }
@@ -134,5 +143,5 @@ export async function fetchAdminLogs(
   })
   if (model) params.append('model', model)
   if (statusCode) params.append('statusCode', statusCode)
-  return apiRequest(`/v1/admin/logs?${params.toString()}`)
+  return apiRequest(`${getBaseApiPrefix()}/admin/logs?${params.toString()}`)
 }
