@@ -15,6 +15,7 @@ const (
 	RoleGuest     = "guest"
 	RoleDeveloper = "developer"
 	RoleVIP       = "vip"
+	RoleAdmin     = "admin"
 
 	ProtocolChat      = "chat"
 	ProtocolResponses = "responses"

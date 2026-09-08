@@ -5,6 +5,7 @@ export interface UserProfile {
   role: string
   policy_name: string
   is_custom: boolean
+  is_admin?: boolean
   rpm_limit: number
   daily_limit_credits: number
   weekly_limit_credits: number

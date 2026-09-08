@@ -175,9 +175,43 @@ func attachUserAndQuota(c *gin.Context, db *gorm.DB, userID uint, keyID *uint) {
 		c.Set(ContextAPIKeyID, *keyID)
 	}
 
-	quota, wallet, err := store.InitOrGetUserQuota(db, userID)
-	if err == nil {
+	// 判定是否具备平台超级管理员/网关管理员权限
+	isAdmin := false
+	if rawAdmin, exists := c.Get(auth.ContextIsAdmin); exists {
+		if a, ok := rawAdmin.(bool); ok && a {
+			isAdmin = true
+		}
+	}
+	if !isAdmin {
+		if rawRoles, exists := c.Get(auth.ContextRoles); exists {
+			if roles, ok := rawRoles.([]string); ok {
+				for _, r := range roles {
+					if r == "admin" || r == "super_admin" || r == "gate_admin" {
+						isAdmin = true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	var quota *models.GateUserQuota
+	var wallet *models.CreditsWallet
+	var err error
+
+	if isAdmin {
+		quota, err = store.EnsureAdminQuota(db, userID)
+		if err == nil {
+			_, wallet, _ = store.InitOrGetUserQuota(db, userID)
+		}
+	} else {
+		quota, wallet, err = store.InitOrGetUserQuota(db, userID)
+	}
+
+	if err == nil && quota != nil {
 		c.Set(ContextUserQuota, quota)
-		c.Set(ContextWallet, wallet)
+		if wallet != nil {
+			c.Set(ContextWallet, wallet)
+		}
 	}
 }

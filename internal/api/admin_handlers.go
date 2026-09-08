@@ -2,12 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"code-common/backend/auth"
-	commonModels "code-common/backend/models"
 	"code-gate/internal/models"
 	"code-gate/internal/store"
 	"github.com/gin-gonic/gin"
@@ -28,11 +28,19 @@ func RequireAdmin() gin.HandlerFunc {
 			if rawRoles, exists := c.Get(auth.ContextRoles); exists {
 				if roles, ok := rawRoles.([]string); ok {
 					for _, r := range roles {
-						if r == "admin" || r == "super_admin" {
+						if r == "admin" || r == "super_admin" || r == "gate_admin" {
 							isAdmin = true
 							break
 						}
 					}
+				}
+			}
+		}
+
+		if !isAdmin {
+			if rawQuota, exists := c.Get(ContextUserQuota); exists {
+				if q, ok := rawQuota.(*models.GateUserQuota); ok && q != nil && q.Role == models.RoleAdmin {
+					isAdmin = true
 				}
 			}
 		}
@@ -77,50 +85,49 @@ func HandleAdminListUsers(c *gin.Context) {
 
 	search := strings.TrimSpace(c.Query("search"))
 
-	var users []commonModels.User
-	query := db.Model(&commonModels.User{})
+	var quotas []models.GateUserQuota
+	query := db.Model(&models.GateUserQuota{}).Preload("Policy")
 	if search != "" {
-		query = query.Where("username ILIKE ? OR name ILIKE ? OR email ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+		query = query.Where("role ILIKE ? OR CAST(user_id AS TEXT) ILIKE ?", "%"+search+"%", "%"+search+"%")
 	}
-	if err := query.Limit(100).Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户失败: " + err.Error()})
+	if err := query.Order("id desc").Limit(100).Find(&quotas).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户配额失败: " + err.Error()})
 		return
 	}
 
 	var results []UserQuotaDetailDTO
-	for _, u := range users {
-		quota, wallet, _ := store.InitOrGetUserQuota(db, u.ID)
+	for _, q := range quotas {
+		var wallet models.CreditsWallet
+		_ = db.Where("user_id = ?", q.UserID).First(&wallet).Error
+
+		policyName := "默认策略"
+		dailyLimit := 50.0
+		weeklyLimit := 200.0
+		if q.Policy != nil {
+			policyName = q.Policy.Name
+			dailyLimit = q.Policy.DailyCreditsLimit
+			weeklyLimit = q.Policy.WeeklyCreditsLimit
+		}
+		if q.CustomDailyCredits != nil && *q.CustomDailyCredits > 0 {
+			dailyLimit = *q.CustomDailyCredits
+		}
+		if q.CustomWeeklyCredits != nil && *q.CustomWeeklyCredits > 0 {
+			weeklyLimit = *q.CustomWeeklyCredits
+		}
+
 		dto := UserQuotaDetailDTO{
-			UserID:         u.ID,
-			Username:       u.Username,
-			Name:           u.Name,
-			Email:          u.Email,
-			Role:           models.RoleGuest,
-			PolicyName:     "未绑定",
-			DailyLimit:     50.0,
-			WeeklyLimit:    200.0,
-			DailyConsumed:  0,
-			WeeklyConsumed: 0,
-		}
-		if quota != nil {
-			dto.Role = quota.Role
-			dto.CustomDailyCredits = quota.CustomDailyCredits
-			dto.CustomWeeklyCredits = quota.CustomWeeklyCredits
-			if quota.Policy != nil {
-				dto.PolicyName = quota.Policy.Name
-				dto.DailyLimit = quota.Policy.DailyCreditsLimit
-				dto.WeeklyLimit = quota.Policy.WeeklyCreditsLimit
-			}
-			if quota.CustomDailyCredits != nil && *quota.CustomDailyCredits > 0 {
-				dto.DailyLimit = *quota.CustomDailyCredits
-			}
-			if quota.CustomWeeklyCredits != nil && *quota.CustomWeeklyCredits > 0 {
-				dto.WeeklyLimit = *quota.CustomWeeklyCredits
-			}
-		}
-		if wallet != nil {
-			dto.DailyConsumed = wallet.DailyConsumed
-			dto.WeeklyConsumed = wallet.WeeklyConsumed
+			UserID:              q.UserID,
+			Username:            fmt.Sprintf("用户 #%d", q.UserID),
+			Name:                fmt.Sprintf("UID-%d", q.UserID),
+			Email:               fmt.Sprintf("user_%d@internal", q.UserID),
+			Role:                q.Role,
+			PolicyName:          policyName,
+			DailyLimit:          dailyLimit,
+			WeeklyLimit:         weeklyLimit,
+			DailyConsumed:       wallet.DailyConsumed,
+			WeeklyConsumed:      wallet.WeeklyConsumed,
+			CustomDailyCredits:  q.CustomDailyCredits,
+			CustomWeeklyCredits: q.CustomWeeklyCredits,
 		}
 		results = append(results, dto)
 	}

@@ -54,6 +54,11 @@ func (e *Engine) CheckQuota(
 		return nil, nil, fmt.Errorf("加载用户配额失败: %w", err)
 	}
 
+	// 0. 管理员角色拥有全量模型权限，免除额度与频次限制
+	if quota.Role == models.RoleAdmin {
+		return quota, wallet, nil
+	}
+
 	// 1. 获取该用户生效的限额与策略
 	dailyLimit := 50.0
 	weeklyLimit := 200.0

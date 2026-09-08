@@ -103,6 +103,21 @@ func seedDefaults(db *gorm.DB, cfg *config.Config) {
 		}
 		_ = db.Create(&devPolicy).Error
 	}
+
+	// 3. 初始化超级管理员/管理员 admin 配额策略
+	var adminPolicy models.QuotaPolicy
+	if err := db.Where("name = ?", "admin_policy").First(&adminPolicy).Error; err != nil {
+		allModels, _ := json.Marshal([]string{"*"})
+		adminPolicy = models.QuotaPolicy{
+			Name:               "admin_policy",
+			DailyCreditsLimit:  100000.0,
+			WeeklyCreditsLimit: 500000.0,
+			RateLimitRPM:       1000,
+			TimeRanges:         datatypes.JSON("[]"),
+			ModelWhitelist:     datatypes.JSON(allModels),
+		}
+		_ = db.Create(&adminPolicy).Error
+	}
 }
 
 // InitOrGetUserQuota 获取或自动初始化指定用户的 CodeGate 配额记录与算力台账
@@ -156,4 +171,49 @@ func InitOrGetUserQuota(db *gorm.DB, userID uint) (*models.GateUserQuota, *model
 	}
 
 	return &quota, &wallet, nil
+}
+
+// EnsureAdminQuota 确保平台超级管理员具备 CodeGate 的 admin 角色与专属充沛配额策略
+func EnsureAdminQuota(db *gorm.DB, userID uint) (*models.GateUserQuota, error) {
+	var adminPolicy models.QuotaPolicy
+	var policyID *uint
+	if pErr := db.Where("name = ?", "admin_policy").First(&adminPolicy).Error; pErr == nil {
+		policyID = &adminPolicy.ID
+	}
+
+	var quota models.GateUserQuota
+	err := db.Preload("Policy").Where("user_id = ?", userID).First(&quota).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			quota = models.GateUserQuota{
+				UserID:   userID,
+				Role:     models.RoleAdmin,
+				PolicyID: policyID,
+			}
+			if cErr := db.Create(&quota).Error; cErr != nil {
+				return nil, fmt.Errorf("创建管理员配额记录失败: %w", cErr)
+			}
+			if policyID != nil {
+				quota.Policy = &adminPolicy
+			}
+			return &quota, nil
+		}
+		return nil, err
+	}
+
+	// 若已存在但角色非 admin，自动同步升级为 admin 角色并关联 admin_policy
+	if quota.Role != models.RoleAdmin {
+		quota.Role = models.RoleAdmin
+		quota.PolicyID = policyID
+		if sErr := db.Model(&quota).Updates(map[string]interface{}{
+			"role":      models.RoleAdmin,
+			"policy_id": policyID,
+		}).Error; sErr != nil {
+			log.Printf("[CodeGate] 自动同步升级管理员角色失败: %v", sErr)
+		}
+		if policyID != nil {
+			quota.Policy = &adminPolicy
+		}
+	}
+	return &quota, nil
 }

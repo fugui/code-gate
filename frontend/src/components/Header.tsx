@@ -63,43 +63,55 @@ export const Header: React.FC = () => {
             <Key size={16} />
             <span>算力与密钥</span>
           </Link>
-          <Link to="/admin/users" className={`gate-nav-link ${location.pathname === '/admin/users' ? 'active' : ''}`}>
-            <Users size={16} />
-            <span>用户配额</span>
-          </Link>
-          <Link to="/admin/backends" className={`gate-nav-link ${location.pathname === '/admin/backends' ? 'active' : ''}`}>
-            <Server size={16} />
-            <span>模型与后端</span>
-          </Link>
-          <Link to="/logs" className={`gate-nav-link ${location.pathname === '/logs' ? 'active' : ''}`}>
-            <FileText size={16} />
-            <span>审计日志</span>
-          </Link>
+          {profile?.is_admin && (
+            <>
+              <Link to="/admin/users" className={`gate-nav-link ${location.pathname === '/admin/users' ? 'active' : ''}`}>
+                <Users size={16} />
+                <span>用户配额</span>
+              </Link>
+              <Link to="/admin/backends" className={`gate-nav-link ${location.pathname === '/admin/backends' ? 'active' : ''}`}>
+                <Server size={16} />
+                <span>模型与后端</span>
+              </Link>
+              <Link to="/logs" className={`gate-nav-link ${location.pathname === '/logs' ? 'active' : ''}`}>
+                <FileText size={16} />
+                <span>审计日志</span>
+              </Link>
+            </>
+          )}
         </nav>
       </div>
 
       <div className="gate-header-actions">
         {profile && (
-          <div className="gate-quota-capsule" title={`日配额: ${profile.daily_used_credits.toFixed(1)} / ${profile.daily_limit_credits.toFixed(1)} Credits\n周配额: ${profile.weekly_used_credits.toFixed(1)} / ${profile.weekly_limit_credits.toFixed(1)} Credits`}>
-            <span style={{ color: 'var(--color-text-muted)' }}>本日</span>
-            <div className="gate-progress-bar-wrap">
-              <div
-                className={`gate-progress-bar-fill ${getBarColorClass(dailyPercent)}`}
-                style={{ width: `${dailyPercent}%` }}
-              />
-            </div>
-            <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{dailyPercent}%</span>
+          <div className="gate-quota-capsule" title={`角色: ${profile.role === 'admin' ? '超级管理员' : profile.role}\n日配额: ${profile.daily_used_credits.toFixed(1)} / ${profile.daily_limit_credits.toFixed(1)} Credits\n周配额: ${profile.weekly_used_credits.toFixed(1)} / ${profile.weekly_limit_credits.toFixed(1)} Credits`}>
+            {profile.is_admin ? (
+              <span style={{ color: 'var(--color-primary)', fontWeight: 600, padding: '0 4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Shield size={14} /> 管理员 (无限制)
+              </span>
+            ) : (
+              <>
+                <span style={{ color: 'var(--color-text-muted)' }}>本日</span>
+                <div className="gate-progress-bar-wrap">
+                  <div
+                    className={`gate-progress-bar-fill ${getBarColorClass(dailyPercent)}`}
+                    style={{ width: `${dailyPercent}%` }}
+                  />
+                </div>
+                <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{dailyPercent}%</span>
 
-            <span style={{ color: 'var(--color-border-primary)', margin: '0 2px' }}>|</span>
+                <span style={{ color: 'var(--color-border-primary)', margin: '0 2px' }}>|</span>
 
-            <span style={{ color: 'var(--color-text-muted)' }}>本周</span>
-            <div className="gate-progress-bar-wrap">
-              <div
-                className={`gate-progress-bar-fill ${getBarColorClass(weeklyPercent)}`}
-                style={{ width: `${weeklyPercent}%` }}
-              />
-            </div>
-            <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{weeklyPercent}%</span>
+                <span style={{ color: 'var(--color-text-muted)' }}>本周</span>
+                <div className="gate-progress-bar-wrap">
+                  <div
+                    className={`gate-progress-bar-fill ${getBarColorClass(weeklyPercent)}`}
+                    style={{ width: `${weeklyPercent}%` }}
+                  />
+                </div>
+                <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{weeklyPercent}%</span>
+              </>
+            )}
           </div>
         )}
 

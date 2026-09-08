@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"code-common/backend/auth"
 	"code-gate/internal/models"
 	"code-gate/internal/store"
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,7 @@ type UserProfileResponse struct {
 	Role                   string  `json:"role"`
 	PolicyName             string  `json:"policy_name"`
 	IsCustom               bool    `json:"is_custom"`
+	IsAdmin                bool    `json:"is_admin"`
 	RPMLimit               int     `json:"rpm_limit"`
 	DailyLimitCredits      float64 `json:"daily_limit_credits"`
 	WeeklyLimitCredits     float64 `json:"weekly_limit_credits"`
@@ -44,10 +46,46 @@ func HandleGetUserProfile(c *gin.Context) {
 		return
 	}
 
-	userQuota, wallet, err := store.InitOrGetUserQuota(db, userID)
+	// 判定当前用户是否为超级管理员/管理员
+	isAdmin := false
+	if rawAdmin, exists := c.Get(auth.ContextIsAdmin); exists {
+		if a, ok := rawAdmin.(bool); ok && a {
+			isAdmin = true
+		}
+	}
+	if !isAdmin {
+		if rawRoles, exists := c.Get(auth.ContextRoles); exists {
+			if roles, ok := rawRoles.([]string); ok {
+				for _, r := range roles {
+					if r == "admin" || r == "super_admin" || r == "gate_admin" {
+						isAdmin = true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	var userQuota *models.GateUserQuota
+	var wallet *models.CreditsWallet
+	var err error
+
+	if isAdmin {
+		userQuota, err = store.EnsureAdminQuota(db, userID)
+		if err == nil {
+			_, wallet, _ = store.InitOrGetUserQuota(db, userID)
+		}
+	} else {
+		userQuota, wallet, err = store.InitOrGetUserQuota(db, userID)
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户配额失败: " + err.Error()})
 		return
+	}
+
+	if !isAdmin && userQuota.Role == models.RoleAdmin {
+		isAdmin = true
 	}
 
 	policyName := "guest_policy"
@@ -86,6 +124,7 @@ func HandleGetUserProfile(c *gin.Context) {
 		Role:                   userQuota.Role,
 		PolicyName:             policyName,
 		IsCustom:               isCustom,
+		IsAdmin:                isAdmin,
 		RPMLimit:               rpmLimit,
 		DailyLimitCredits:      dailyLimit,
 		WeeklyLimitCredits:     weeklyLimit,

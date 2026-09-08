@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"code-common/backend/auth"
 	"code-gate/internal/config"
@@ -139,4 +140,81 @@ func TestAdminSavePolicy(t *testing.T) {
 
 	// 清理策略
 	_ = db.Where("name = ?", "vip_project_policy").Delete(&models.QuotaPolicy{})
+}
+
+func TestSuperAdminAutoGrantAndAccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	secret := "ABCDEFGHIJKLMNOPQRSTVUWXYZ0987654321"
+	cfg, err := config.Load("../../config.yaml")
+	if err != nil {
+		cfg, _ = config.Load("../../config.yaml.example")
+	}
+	db, err := store.InitDB(cfg)
+	if err != nil {
+		t.Skipf("无法连接本地 PostgreSQL 测试库，跳过测试: %v", err)
+		return
+	}
+
+	r := gin.New()
+	v1 := r.Group("/v1")
+	v1.Use(UnifiedAuthMiddleware(func() string {
+		return secret
+	}))
+	{
+		v1.GET("/user/profile", HandleGetUserProfile)
+
+		admin := v1.Group("/admin")
+		admin.Use(RequireAdmin())
+		{
+			admin.GET("/users", HandleAdminListUsers)
+		}
+	}
+
+	// 1. 生成普通用户 Token
+	normalToken, _ := auth.GenerateToken(8888, "normal", "normal@example.com", "Normal User", false, []string{"user"}, secret, 1*time.Hour)
+
+	// 2. 生成 CodeBench 超级管理员 Token (roles: ["super_admin"], is_admin: true)
+	superAdminToken, _ := auth.GenerateToken(9999, "superadmin", "admin@company.com", "Super Admin", true, []string{"super_admin", "admin"}, secret, 1*time.Hour)
+
+	// 3. 普通用户访问 /v1/admin/users 应被拒绝 403
+	wNorm := httptest.NewRecorder()
+	reqNorm, _ := http.NewRequest(http.MethodGet, "/v1/admin/users", nil)
+	reqNorm.Header.Set("Authorization", "Bearer "+normalToken)
+	r.ServeHTTP(wNorm, reqNorm)
+	if wNorm.Code != http.StatusForbidden {
+		t.Errorf("普通用户访问管理接口期望返回 403, 实际获得: %d", wNorm.Code)
+	}
+
+	// 4. 超级管理员访问 /v1/user/profile 应返回 200，并且 is_admin 为 true，角色为 admin
+	wAdminProf := httptest.NewRecorder()
+	reqAdminProf, _ := http.NewRequest(http.MethodGet, "/v1/user/profile", nil)
+	reqAdminProf.Header.Set("Authorization", "Bearer "+superAdminToken)
+	r.ServeHTTP(wAdminProf, reqAdminProf)
+	if wAdminProf.Code != http.StatusOK {
+		t.Fatalf("超级管理员访问个人配额失败: %d, body: %s", wAdminProf.Code, wAdminProf.Body.String())
+	}
+
+	var profResp struct {
+		Data UserProfileResponse `json:"data"`
+	}
+	_ = json.Unmarshal(wAdminProf.Body.Bytes(), &profResp)
+	if !profResp.Data.IsAdmin {
+		t.Errorf("超级管理员访问个人配额期望 is_admin 为 true, 实际为 false")
+	}
+	if profResp.Data.Role != models.RoleAdmin {
+		t.Errorf("超级管理员角色期望自动提升为 admin, 实际为 %s", profResp.Data.Role)
+	}
+
+	// 5. 超级管理员访问 /v1/admin/users 应成功返回 200
+	wAdmin := httptest.NewRecorder()
+	reqAdmin, _ := http.NewRequest(http.MethodGet, "/v1/admin/users", nil)
+	reqAdmin.Header.Set("Authorization", "Bearer "+superAdminToken)
+	r.ServeHTTP(wAdmin, reqAdmin)
+	if wAdmin.Code != http.StatusOK {
+		t.Errorf("超级管理员访问管理接口期望返回 200, 实际获得: %d, body: %s", wAdmin.Code, wAdmin.Body.String())
+	}
+
+	// 清理测试用户配额记录
+	_ = db.Where("user_id IN ?", []uint{8888, 9999}).Delete(&models.GateUserQuota{})
 }
