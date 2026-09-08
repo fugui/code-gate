@@ -164,8 +164,9 @@ func handleProxyRequest(
 		return
 	}
 
-	// 3. 协议感知路由选择物理后端 (仅分发至支持该协议的后端)
-	selectedBackend, routeErr := r.SelectBackend(&targetModel, proto, routing.StrategyWeightedLeastConn)
+	// 3. 提取会话特征并执行协议感知 + KV Cache 亲和性路由
+	sessionID := routing.ExtractSessionID(c, bodyBytes)
+	selectedBackend, routeErr := r.SelectBackend(&targetModel, proto, sessionID, routing.StrategyWeightedLeastConn)
 	if routeErr != nil {
 		if errors.Is(routeErr, routing.ErrNoCompatibleBackend) {
 			c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{

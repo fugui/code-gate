@@ -11,6 +11,7 @@ import (
 
 	"code-common/backend/server"
 	"code-gate/internal/api"
+	"code-gate/internal/audit"
 	"code-gate/internal/config"
 	"code-gate/internal/proxy"
 	"code-gate/internal/quota"
@@ -63,7 +64,10 @@ func main() {
 	prober := routing.NewProber(5 * time.Second)
 	prober.Start(30 * time.Second)
 
-	// 4. 基于 code-common/backend/server 脚手架启动微服务
+	// 4. 启动审计日志定时轮转清理协程
+	cleanupStopChan := audit.StartLogCleanupTask(store.GetDB(), 7, 24*time.Hour)
+
+	// 5. 基于 code-common/backend/server 脚手架启动微服务
 	serverOpts := server.Options{
 		ServiceName:       "Code-Gate",
 		Prefix:            cfg.Server.Prefix,
@@ -92,11 +96,25 @@ func main() {
 				v1Group.GET("/models", api.HandleListModels)
 				v1Group.POST("/chat/completions", api.HandleChatCompletions(proxyClient, router, quotaEngine))
 				v1Group.POST("/responses", api.HandleResponses(proxyClient, router, quotaEngine))
+
+				// 管理员受保护管理路由组
+				adminGroup := v1Group.Group("/admin")
+				adminGroup.Use(api.RequireAdmin())
+				{
+					adminGroup.GET("/users", api.HandleAdminListUsers)
+					adminGroup.PUT("/users/:id/quota", api.HandleAdminUpdateUserQuota)
+					adminGroup.GET("/policies", api.HandleAdminListPolicies)
+					adminGroup.POST("/policies", api.HandleAdminSavePolicy)
+					adminGroup.POST("/models", api.HandleAdminSaveModel)
+					adminGroup.POST("/backends", api.HandleAdminSaveBackend)
+					adminGroup.GET("/logs", api.HandleAdminListLogs)
+				}
 			}
 		},
 		OnShutdown: func(ctx context.Context) {
 			log.Printf("[CodeGate] 正在停止后台探针与释放资源...")
 			prober.Stop()
+			close(cleanupStopChan)
 			log.Printf("[CodeGate] 优雅停机处理完成")
 		},
 	}

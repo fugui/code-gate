@@ -33,10 +33,11 @@ func NewRouter() *Router {
 	return &Router{}
 }
 
-// SelectBackend 根据请求的协议类型和负载均衡策略，为模型选取最优的物理后端
+// SelectBackend 根据会话标识、请求协议类型和负载均衡策略，为模型选取最优的物理后端
 func (r *Router) SelectBackend(
 	model *models.Model,
 	requestedProtocol string,
+	sessionID string,
 	strategy string,
 ) (*models.Backend, error) {
 	if model == nil {
@@ -88,7 +89,14 @@ func (r *Router) SelectBackend(
 		return compatibleBackends[0], nil
 	}
 
-	// 3. 执行负载均衡调度
+	// 3. 若携带有效会话标识，优先执行 HRW KV Cache 会话亲和性调度 (含溢出保护)
+	if sessionID != "" {
+		if b := SelectByHRW(sessionID, compatibleBackends); b != nil {
+			return b, nil
+		}
+	}
+
+	// 4. 执行常规负载均衡调度
 	if strategy == StrategyWeightedRoundRobin {
 		return r.selectByRoundRobin(model.ID, compatibleBackends), nil
 	}
