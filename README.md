@@ -3,12 +3,19 @@
 [![Go Version](https://img.shields.io/badge/Go-1.22+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**CodeGate（码界）** 是为公司内部团队构建的统一大模型接入网关与算力调度平台。作为 `code-*` 系列基础设施的核心成员，它与团队共享企业级 **PostgreSQL** 数据库，作为内部研发辅助（Claude Code、OpenCode、Cursor 等）、代码安全分析（Code-Shield 等）以及全员日常 AI 交互的统一门户，提供多模型协议感知直通代理、Credits 算力点数治理、动态负载均衡与容灾、KV Cache 会话亲和性加速与全链路审计。
+**CodeGate（码界）** 是为公司内部团队构建的统一大模型接入网关与算力调度平台。作为 `code-*` 系列基础设施的核心成员，它深度集成 **`code-common` 前后端公共框架**，共享企业级 **PostgreSQL** 数据库与 **CodeBench** 统一用户认证体系，作为内部研发辅助（Claude Code、OpenCode、Cursor 等）、代码安全分析（Code-Shield 等）以及全员日常 AI 交互的统一门户，提供协议感知直通代理、Credits 算力点数治理、动态负载均衡与容灾、KV Cache 会话亲和性加速与全链路审计。
 
 ---
 
 ## 🌟 核心特性概览
 
+- **公共框架深度集成（`code-common`）**：
+  - 后端复用 `code-common/backend`（`gormdb` 统一连接池、`auth` JWT 鉴权中间件、`server` 脚手架与优雅停机）。
+  - 前端全量遵循 `@code/common` 设计规范（Design Tokens 语义颜色、`theme.css` 深浅双模主题）并复用成熟 UI 组件库。
+- **共享 CodeBench 用户，独立配额自治**：
+  - 零重复开发账号注册与密码管理，直接共享 CodeBench 用户认证体系。
+  - 用户初次使用默认自动绑定 **`guest` 配额角色**（受保底体验额度与基础模型保护）。
+  - CodeGate 管理员可在控制台灵活为用户分配高阶角色（如 `developer`、`vip`）或定制专属配额策略。
 - **协议感知直通代理**：
   - 原生兼容 OpenAI `/v1/chat/completions` 与 `/v1/models` 标准协议。
   - 专为现代 AI 编码 Agent（如 OpenCode、Codex CLI）提供专属原生直通代理 `/v1/responses`。
@@ -28,14 +35,9 @@
   - 面向后端实例的原子 CAS 无锁并发控制，严防私有显卡或上游账号被瞬间打爆。
   - 基于 User-Agent 的黑名单拦截过滤规则，动态防范恶意请求。
   - 支持跨午夜可用时间段策略（如 `22:00-06:00` 闲时运行），引导合理用量。
-- **组织凭证与全链路审计**：
-  - 支持企业 SSO 单点登录（OIDC / Azure AD）与用户自助注册审核流。
-  - 用户自助申请与管理多场景 API Key（支持到期日与模型权限白名单）。
+- **全链路审计与运维排障**：
   - 全链路脱敏 Access Log、流式 SSE 响应异步聚合还原、4 阶段原始报文转储（Raw Dumps）。
-- **工程化与极简交付**：
-  - **共享 PostgreSQL 架构**：深度融入 `code-*` 系列技术架构，采用 GORM v2 连接高并发 PostgreSQL 数据库。
-  - **单二进制交付**：内嵌前端 React 构建产物（`go:embed`），交付仅需一个二进制文件与配置文件。
-  - **运行时热重载**：配置修改毫秒级热生效，长连接完全不中断。
+  - 配置修改毫秒级热生效（Hot-Reload），长连接完全不中断。
 
 ---
 
@@ -45,17 +47,17 @@
 
 | 文档名称 | 路径 | 内容简介 |
 | :--- | :--- | :--- |
-| **功能特性全景规划** | [docs/features.md](docs/features.md) | 业务背景、用户画像、核心特性矩阵、Credits 计费模型及典型应用场景详细说明 |
-| **系统技术架构设计** | [docs/architecture.md](docs/architecture.md) | 系统总体架构、协议自动探测与感知路由算法、Credits 计费架构与 PG 数据库设计 |
-| **实施路线图与里程碑** | [docs/roadmap.md](docs/roadmap.md) | 四阶段（MVP -> 协议感知高可用 -> 调度安全 -> 完整门户）工程排期与验收标准 |
+| **功能特性全景规划** | [docs/features.md](docs/features.md) | 业务背景、用户画像、核心特性矩阵、CodeBench 用户与独立配额、Credits 计费模型及应用场景 |
+| **系统技术架构设计** | [docs/architecture.md](docs/architecture.md) | 架构分层、code-common 模块整合、协议自动探测与路由算法、配额角色模型与 PG 设计 |
+| **实施路线图与里程碑** | [docs/roadmap.md](docs/roadmap.md) | 四阶段（MVP -> 协议感知与配额 -> 调度运维 -> 完整门户）工程排期与验收标准 |
 
 ---
 
 ## 🛠️ 核心技术栈
 
-- **后端开发**：Go 1.22+，Gin Web Framework
-- **持久化与缓存**：PostgreSQL（共享 `code-*` 基础库，GORM v2），内存滑动窗口计数器与 LRU 缓存
-- **前端控制台**：React 18，Vite 5，TypeScript，Ant Design，Vanilla CSS（深浅主题双模适配）
+- **后端开发**：Go 1.22+，基于 `code-common/backend`（`server`, `auth`, `gormdb`, `models`）
+- **持久化与缓存**：PostgreSQL（共享 `code-*` 数据库，GORM v2），内存滑动窗口计数器与 LRU 缓存
+- **前端控制台**：React 18，Vite 5，TypeScript，Ant Design，基于 `@code/common` 样式规范与组件系统
 - **打包交付**：Go `embed.FS` 嵌入式单可执行文件交付，支持全平台交叉编译
 
 ---
@@ -64,4 +66,4 @@
 
 - **`code-shield`（代码质量与安全网关）**：为其 AI 检视逻辑提供稳定、多实例负载均衡的高可用推理算力支撑，避免 429 报错中断流水线。
 - **`code-pipeline`（CI/CD 流水线）**：统一配置项目专属密钥，精准按 Credits 费率核算各业务线构建时的 AI 成本。
-- **研发工程师协同**：为团队使用 Claude Code / OpenCode / Cursor / VSCode 插件提供统一算力充值通道与审计底座。
+- **研发工程师协同**：直接使用已有 CodeBench 账号登录，为使用 Claude Code / OpenCode / Cursor / VSCode 插件提供统一算力充值通道与审计底座。

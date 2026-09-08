@@ -4,7 +4,7 @@
 
 ## 一、总体架构分层设计
 
-CodeGate 采用高内聚、低耦合的轻量级模块化分层架构。系统深度融入公司 `code-*` 系列技术体系，底层持久化接入统一的 **PostgreSQL** 数据库。
+CodeGate 深度融入公司 `code-*` 系列技术体系，底层持久化接入统一的 **PostgreSQL** 数据库，全面集成 **`code-common` 前后端公共框架**，并共享 **CodeBench** 统一用户管理。
 
 ```
                           ┌────────────────────────┐
@@ -13,16 +13,20 @@ CodeGate 采用高内聚、低耦合的轻量级模块化分层架构。系统�
                                       │ HTTP / HTTPS (Chat / Responses)
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 1. 网络接入层 (Gin Engine)                                                  │
-│    • Read/Write/Idle 超时控制 (30m+)  • MaxHeaderBytes 攻击防御             │
-│    • CORS 跨域治理                    • 优雅停机信号捕获 (Graceful Shutdown) │
+│ 1. 公共接入与脚手架层 (基于 code-common/backend/server)                     │
+│    • Gin Engine 统一脚手架            • CORS 跨域治理                       │
+│    • Read/Write/Idle 超时控制 (30m+)  • MaxHeaderBytes 安全防御             │
+│    • 优雅停机信号捕获 (Graceful Shutdown)                                   │
 └─────────────────────────────────────┬───────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 2. 安全、鉴权与 Credits 配额层 (Security & Quota Engine)                    │
-│    • User-Agent 客户端黑名单拦截      • 企业 SSO (OIDC/Azure AD) / JWT 校验 │
-│    • API Key 内存高速缓存鉴权         • 模型白名单 & 跨午夜可用时段校验     │
+│ 2. 用户认证与独立配额角色层 (Auth & Quota Engine)                           │
+│    • 共享 CodeBench 用户认证体系 (code-common/backend/auth 中间件)          │
+│    • 用户专属配额映射表 (GateUserQuota)                                     │
+│      - 默认角色: guest (初始体验配额，低日/周上限)                          │
+│      - 管理员可赋权: developer / vip / 自定义配额策略                       │
+│    • API Key 内存高速缓存鉴权         • User-Agent 客户端黑名单拦截         │
 │    • Credits 算力点数治理体系         • 每日上限 (Daily) & 每周总量 (Weekly)│
 │    • Token 差异费率 (1 / 0.1 / 5)     • 模型专属倍率系数 (0.5x ~ 10x)       │
 └─────────────────────────────────────┬───────────────────────────────────────┘
@@ -49,39 +53,73 @@ CodeGate 采用高内聚、低耦合的轻量级模块化分层架构。系统�
                    ┌──────────────────┴──────────────────┐
                    ▼                                     ▼
 ┌─────────────────────────────────────┐ ┌─────────────────────────────────────┐
-│ 5. 存储与缓存层 (Persistence)       │ │ 6. 观测审计与排障 (Observability)   │
-│    • 企业级 PostgreSQL (GORM v2)    │ │    • 全链路 Access Log (敏感头脱敏) │
+│ 5. 存储与公共基座 (Persistence)     │ │ 6. 观测审计与前端交互 (Web & Audit) │
+│    • PostgreSQL (code-common/gormdb)│ │    • 全链路 Access Log (敏感头脱敏) │
 │    • 连接池高并发调优 (Pool Tuning) │ │    • 流式响应内容异步还原重组       │
 │    • 内存 LRU Cache (高速鉴权)      │ │    • 4 阶段原始报文转储 (Raw Dumps) │
-│    • 异步批量落盘 Credits 账单流水  │ │    • 历史数据自动分区与清理 (7天)   │
-│    • embed.FS 前端静态资源内嵌      │ │                                     │
+│    • 异步批量落盘 Credits 账单流水  │ │    • 前端基于 @code/common 组件库   │
+│    • embed.FS 前端静态资源内嵌      │ │    • 深浅主题 Design Tokens 规范    │
 └─────────────────────────────────────┘ └─────────────────────────────────────┘
 ```
 
 ---
 
-## 二、关键技术选型与决策
+## 二、关键技术选型与公共框架复用
 
-| 模块 / 需求 | 既有考量 | CodeGate 选型决策 | 决策收益与理由 |
+| 模块 / 需求 | 传统/原型方案 | CodeGate 生产决策 | 框架复用与架构收益 |
 | :--- | :--- | :--- | :--- |
-| **持久化存储** | 单文件纯 Go SQLite | **PostgreSQL (共享 `code-*` 基础库)** | 与团队整体技术栈统一（遵循 GORM v2 标准），具备高并发事务、成熟连接池和企业级备份能力，完全无需单文件锁的妥协。 |
-| **编程语言** | Python / Node.js | **Go 1.22+** | 高并发性能卓越、天然原生 Goroutine、内存开销极低。 |
-| **Web 框架** | Kong / APISIX / FastAPI | **Gin Web Framework** | 成熟稳定，中间件生态健全，路由性能与流式代理能力出众。 |
-| **缓存架构** | 外部单独部署 Redis | **内存滑动窗口 + LRU 缓存 + PG 异步持久化** | 避免引入额外 Redis 运维负担，鉴权与限流全部纳秒级内存完成，账单异步写入 PostgreSQL。 |
+| **基础脚手架** | 独立搭建 Gin | **`code-common/backend/server`** | 直接复用公共基础配置、中间件流水线与优雅关机生命周期调度。 |
+| **认证与凭证** | 自建注册/独立认证 | **`code-common/backend/auth`** | 直接共享 CodeBench 用户数据库与统一 JWT/SSO 鉴权，免去独立维护账号密码。 |
+| **持久化连接** | 独立初始化 DB | **`code-common/backend/gormdb`** | 复用团队统一连接池配置规范、慢日志监听与 PostgreSQL 驱动。 |
+| **配额管理** | 与用户耦合的简单字段 | **CodeGate 独立配额角色模型** | 用户首次访问默认打标 **`guest`** 角色，管理员可在后台灵活赋予 `developer`/`vip` 等高阶角色与自定义配额。 |
+| **前端样式与组件** | 随意手写样式 / 纯 AntD | **`@code/common` 公共前端规范** | 全面遵循团队 Design Tokens 语义颜色变量、`theme.css` 深浅双模主题，复用 `Pagination`、`Drawer` 等成熟组件。 |
 | **计费模型** | 单纯请求频次（RPD） | **Credits 算力点数体系（日/周双周期）** | 精准区分输入/缓存命中/输出成本；周配额为日配额 4 倍，兼顾工作日弹性与周预算可控。 |
 | **协议适配** | 盲目全量转发 | **协议能力自动识别 + 协议感知直通** | 自动探测并打标后端对 `/v1/responses` 的支持能力，确保仅向兼容后端转发，杜绝 404/405 报错。 |
 | **前端交付** | 独立 Nginx 托管 React | **Go `embed.FS` 原生内嵌 React 产物** | 单二进制部署，解耦独立静态服务器，降低运维部署复杂度。 |
 
 ---
 
-## 三、协议感知与后端能力自动标识机制
+## 三、用户管理共享与独立配额角色设计
 
-### 1. 协议现状与核心痛点
-- **OpenAI Chat 协议 (`/v1/chat/completions`)**：业界最通用的大模型接口，所有推理后端（开源推理引擎 vLLM/TGI、主流商业 API 等）均原生支持。
-- **OpenAI Responses 协议 (`/v1/responses`)**：专为智能编程 Agent（如 OpenCode、Codex CLI）设计的现代化端点，仅部分特定供应商或针对 Agent 深度优化的后端才提供支持。
-- **痛点**：若网关不加甄别地将 `/v1/responses` 请求以轮询方式打到普通后端，会频繁遭遇下游 HTTP 404 Not Found 或 405 Method Not Allowed，导致终端编码工具不可用。
+### 1. 架构解耦原理
+CodeGate 遵循**“用户认证归一，业务配额自治”**的设计思想：
+- **用户认证（Authentication）**：委托给 CodeBench 与 `code-common`，用户身份信息（User ID、姓名、邮箱、部门、全局角色）完全由统一用户系统判定；
+- **配额授权（Authorization & Quota）**：CodeGate 在本地 PostgreSQL 维护用户专属的配额绑定表 `gate_user_quotas`。
 
-### 2. 后端能力自动探查（Capability Probing）流程
+```
+                     CodeBench 统一用户体系
+                  (code-common/models.User)
+                             │
+                             ▼ 首次访问 CodeGate
+              ┌──────────────────────────────┐
+              │   自动检测并初始化配额记录   │
+              │   GateUserQuota              │
+              │   Role: "guest" (默认低配额) │
+              └──────────────┬───────────────┘
+                             │
+            ┌────────────────┴────────────────┐
+            ▼                                 ▼
+   普通用户以 guest 体验运行           管理员在控制台调优提权
+   (基础轻量模型，受控额度)           (赋予 developer / vip / 定制策略)
+```
+
+### 2. 配额角色定义
+1. **`guest`（访客 / 默认角色）**：
+   - 任何 CodeBench 合法用户初次访问 CodeGate 时自动生成；
+   - 默认分配安全保底额度（例如每日 50 Credits、每周 200 Credits），仅开放基础模型白名单，防止未报备产生大额消耗。
+2. **`developer`（主力研发）**：
+   - 管理员在控制台为研发工程师赋予；
+   - 开放较高日/周 Credits 额度，授权主流代码大模型（如 DeepSeek-V3、Claude 系列）。
+3. **`team_lead` / `vip`（架构与核心业务）**：
+   - 享受大额或不限额算力，开放全部旗舰模型。
+4. **`custom`（自定义策略）**：
+   - 管理员可针对特定项目或团队直接覆盖指定个性化的日/周 Credits 阈值与专属模型白名单。
+
+---
+
+## 四、协议感知与后端能力自动标识机制
+
+### 1. 协议能力自动探查（Capability Probing）流程
 
 ```
 [后台健康与能力探针协程 (Health & Capability Prober)]
@@ -103,11 +141,7 @@ CodeGate 采用高内聚、低耦合的轻量级模块化分层架构。系统�
   b.Capabilities = ["chat", "responses"] (或仅 ["chat"])
 ```
 
-- **显式配置与自动探查结合**：
-  - 配置文件支持显式定义 `protocols: ["chat", "responses"]`；
-  - 若未配置或开启 `auto_detect_protocols: true`，探针在定期探活时自动探测，并动态沉淀至 Backend 状态中。
-
-### 3. 协议感知直通调度算法（Protocol-Aware Routing）
+### 2. 协议感知直通调度算法（Protocol-Aware Routing）
 
 ```go
 // 调度前基于协议进行候选池过滤
@@ -130,7 +164,7 @@ func SelectBackendsByProtocol(model *Model, requestedProtocol string) []*Backend
 
 ---
 
-## 四、Credits 算力点数模型与高并发扣减架构
+## 五、Credits 算力点数模型与高并发扣减架构
 
 ### 1. Credits 费用计算公式
 
@@ -181,74 +215,45 @@ $$\text{Credits} = \left( \frac{\text{Input} \times 1.0 + \text{CacheHit} \times
 
 - **配额比例原则**：系统默认且推荐 $\text{WeeklyQuota} = 4 \times \text{DailyQuota}$。
   - **弹性平衡**：一周 5 个工作日内，研发人员在关键攻坚日可打满单日额度，但单周整体总用量被 4 倍日额度锚定，防止出现“周一就把整周算力刷爆”或“持续超高负荷消耗公司算力”的情况。
-- **高并发数据一致性**：
-  - 请求前：在内存中完成日/周剩余 Credits 的快速预检；
-  - 请求后：流式连接正常结束或异常关闭时，提取服务商真实 Usage，计算出精确点数；
-  - 异步通道批量同步：通过缓冲 Channel 将扣费流水聚合批量写入 PostgreSQL，大幅减轻数据库并发事务压力。
-
----
-
-## 五、流量调度算法深度剖析
-
-### 1. KV Cache 亲和性会话粘性路由（HRW 哈希）
-
-#### HRW (Rendezvous Hashing) 原理
-在通过协议过滤后的健康后端集合中，调度器利用会话特征计算每个后端的权重评分：
-$$\text{Score}(S, B_i) = \text{Hash}(S \parallel B_i.\text{ID}) \times B_i.\text{Weight}$$
-- 选取最高评分节点作为本次多轮对话的承载节点，最大化命中显存中的 Prompt KV Cache；
-- 配合 0.1 Credits 的缓存低费率，既让响应首字耗时（TTFT）降低 50%~80%，又为团队直接节省 90% 的输入点数。
-
-#### 溢出保护（Spillover Protection）
-- 若首选亲和节点达到 `max_concurrency` 上限或突发健康检查失败，流量自动顺延至评分次高的健康后端，保证吞吐与高可用优先。
-
----
-
-### 2. 实例级原子 CAS 无锁并发反压控制
-
-针对每个物理 Backend 实例实行独立的并发占槽保护：
-
-```go
-// 占槽原子操作
-func (b *Backend) AcquireSlot() bool {
-    for {
-        current := atomic.LoadInt32(&b.activeConnections)
-        if current >= b.MaxConcurrency {
-            return false // 实例当前已饱和
-        }
-        if atomic.CompareAndSwapInt32(&b.activeConnections, current, current+1) {
-            return true  // 成功占槽
-        }
-    }
-}
-
-// 释放槽位
-func (b *Backend) ReleaseSlot() {
-    atomic.AddInt32(&b.activeConnections, -1)
-}
-```
+- **异步通道批量同步**：通过缓冲 Channel 将扣费流水聚合批量写入 PostgreSQL，大幅减轻数据库并发事务压力。
 
 ---
 
 ## 六、数据库设计规范（PostgreSQL + GORM v2）
 
-遵循团队 `code-*` 系列规范，数据库模型统一管理在 `models` 目录下，主要实体表结构包括：
+遵循团队 `code-*` 系列规范，用户表直接复用 `code-common`，CodeGate 专属模型统一放置在 `internal/models/` 目录下：
 
-1. **`users`**：用户基本信息、角色（Admin / User）、状态（Pending / Active / Disabled）、关联配额策略 ID。
-2. **`quota_policies`**：配额策略定义，包含 `daily_credits_limit`、`weekly_credits_limit`（默认为日限额 4 倍）、`rate_limit_rpm`、可用时段区间（支持跨午夜）及模型权限白名单。
-3. **`credits_wallets`**：用户日/周 Credits 实时消耗台账（每日/每周自动按自然周期结转重置）。
-4. **`models`**：逻辑模型定义，包含模型名称、默认降级模型（`default_model`）、模型倍率乘数（`multiplier`，如 0.5、1.0、10.0）、静默注入参数（`model_params`）。
-5. **`backends`**：物理实例定义，包含所属模型 ID、Base URL、真实 API Key、权重、`max_concurrency`、声明及探测到的能力集（`protocols: ["chat", "responses"]`）、健康状态。
-6. **`api_keys`**：用户自助创建的 API Key 凭据，包含哈希签名、过期时间、限定模型白名单、状态。
-7. **`access_logs`**：全链路访问日志，包含用户、客户端 IP、路径、协议、模型、输入 Token、缓存命中 Token、输出 Token、扣减 Credits、耗时、TTFT 及敏感脱敏字段。
-8. **`raw_dumps`**（可选存储）：针对错误请求的 4 阶段原始报文转储记录。
+1. **`users`**（直接复用 `code-common/backend/models.User`）：
+   - 存储全局用户身份，包含 `ID`, `EmployeeID`, `Email`, `Username`, `Name`, `Roles` 等。
+2. **`gate_user_quotas`**（CodeGate 用户配额映射表）：
+   - `user_id`（外键关联 `users.id`，唯一索引）
+   - `role`：配额角色（默认为 `'guest'`，可调整为 `'developer'`, `'vip'` 等）
+   - `policy_id`：关联的配额策略 ID（可选）
+   - `custom_daily_credits` / `custom_weekly_credits`：个性化覆盖额度（若设置则优先于角色默认值）
+   - `created_at`, `updated_at`
+3. **`quota_policies`**（配额策略模板表）：
+   - `name`：策略名称（如 guest_policy, dev_policy）
+   - `daily_credits_limit` / `weekly_credits_limit`（周配额默认为日配额 4 倍）
+   - `rate_limit_rpm`：每分钟请求速率限制
+   - `time_ranges`：允许可用时间段（JSON 数组，如 `["09:00-18:00"]`，支持跨午夜）
+   - `model_whitelist`：允许模型白名单（JSON 数组或 `["*"]`）
+4. **`credits_wallets`**（用户日/周算力台账表）：
+   - `user_id`、`daily_consumed`、`weekly_consumed`、`last_daily_reset`、`last_weekly_reset`
+5. **`models`**（逻辑模型表）：
+   - `name`、`default_model`、`multiplier`（倍率乘数）、`model_params`（静默覆盖参数）
+6. **`backends`**（物理实例表）：
+   - `model_id`、`base_url`、`api_key`、`weight`、`max_concurrency`、`declared_protocols`、`detected_protocols`、`is_healthy`
+7. **`api_keys`**（用户专属 API Key 表）：
+   - `user_id`、`key_hash`、`expires_at`、`allowed_models`、`is_active`
+8. **`access_logs`**（全链路访问审计日志表）：
+   - `user_id`、`protocol`、`model`、`input_tokens`、`cache_hit_tokens`、`output_tokens`、`cost_credits`、`duration_ms`、`ttft_ms`、`status_code`
 
 ---
 
-## 七、单二进制与热重载机制
+## 七、前端架构与 Design Tokens 规范
 
-1. **嵌入式静态前端（`go:embed`）**：
-   - 前端 React 18 产物编译到后端工程目录，通过 Go 1.16+ 原生 `embed.FS` 静态打入二进制；
-   - 生产部署仅需一个二进制可执行文件与 PostgreSQL 连接配置即可运行，运维干净纯粹。
-2. **配置动态热更新（Zero-Downtime）**：
-   - 管理后台对模型、后端实例权重、协议能力声明或配额策略的变更，通过配置管理器发布至内部事件总线；
-   - 调度器即时重载内存路由表与限流器，正在传输的超长流式连接不断开，服务完全平滑。
+前端管理控制台完全融入 **`code-common/frontend`** 规范：
+1. **单一真实源（SSOT）**：全局色彩以 `theme.css` 中的 `--color-*` 语义变量为基准，严格避免硬编码 `#fff`、`#000` 或固定 hex 颜色。
+2. **深浅主题双模适配**：卡片与主表面统一使用 `var(--color-bg-surface)`，文字统一使用 `var(--color-text-primary)`，确保在明亮模式与暗色模式下均获得极致质感。
+3. **通用分页与导航规范**：全量复用 `@code/common` 的 `Pagination` 组件与 `useSearchParams` URL 历史同步，中间仅平滑展示 5 个连续数字滑动窗口。
+4. **统一命名空间**：采用扁平化 BEM 命名，组件统一以 `.code-gate-*` 命名空间组织。
