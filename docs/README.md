@@ -15,6 +15,9 @@
 ### 3. [工程实施路线图 (roadmap.md)](roadmap.md)
 制定清晰的工程落地排期与里程碑规划，拆解为四个演进阶段（Phase 1: 核心代理与公共基座 -> Phase 2: 协议感知与配额引擎 -> Phase 3: 高级调度与运维排障 -> Phase 4: 全功能控制台与协同赋能），明确各阶段任务清单与关键验收指标。
 
+### 4. [管控运维与配置治理系统设计 (admin-configuration-design.md)](admin-configuration-design.md)
+对标 modelgate 配置管理体系，深入设计模型与后端 1:N 治理、上游网关批量自动导入 (Gateway Auto-Import)、独立配额策略池与跨午夜时段编排、物理后端健康与 CAS 并发水位监控、动态客户端 UA 访问控制以及 7 天 TOP 算力消费者交叉矩阵。
+
 ---
 
 ## 🧭 核心设计原则
