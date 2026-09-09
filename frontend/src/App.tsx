@@ -6,6 +6,10 @@ import { KeysPage } from './pages/Keys'
 import { DashboardPage } from './pages/Dashboard'
 import { AdminUsersPage } from './pages/AdminUsers'
 import { AdminBackendsPage } from './pages/AdminBackends'
+import { AdminPoliciesPage } from './pages/AdminPolicies'
+import { AdminHealthPage } from './pages/AdminHealth'
+import { AdminSettingsPage } from './pages/AdminSettings'
+import { AdminTopConsumersPage } from './pages/AdminTopConsumers'
 import { LogsPage } from './pages/Logs'
 
 export interface AppProps {
@@ -31,6 +35,14 @@ export const App: React.FC<AppProps> = ({ isEmbedded = false }) => {
           <Route path="/gate/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/backends" element={<AdminBackendsPage />} />
           <Route path="/gate/admin/backends" element={<AdminBackendsPage />} />
+          <Route path="/admin/policies" element={<AdminPoliciesPage />} />
+          <Route path="/gate/admin/policies" element={<AdminPoliciesPage />} />
+          <Route path="/admin/health" element={<AdminHealthPage />} />
+          <Route path="/gate/admin/health" element={<AdminHealthPage />} />
+          <Route path="/admin/settings" element={<AdminSettingsPage />} />
+          <Route path="/gate/admin/settings" element={<AdminSettingsPage />} />
+          <Route path="/admin/top-consumers" element={<AdminTopConsumersPage />} />
+          <Route path="/gate/admin/top-consumers" element={<AdminTopConsumersPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/gate/logs" element={<LogsPage />} />
           <Route path="*" element={<Navigate to="/gate/chat" replace />} />
@@ -52,6 +64,10 @@ export const App: React.FC<AppProps> = ({ isEmbedded = false }) => {
             <Route path="/admin/dashboard" element={<DashboardPage />} />
             <Route path="/admin/users" element={<AdminUsersPage />} />
             <Route path="/admin/backends" element={<AdminBackendsPage />} />
+            <Route path="/admin/policies" element={<AdminPoliciesPage />} />
+            <Route path="/admin/health" element={<AdminHealthPage />} />
+            <Route path="/admin/settings" element={<AdminSettingsPage />} />
+            <Route path="/admin/top-consumers" element={<AdminTopConsumersPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="*" element={<Navigate to="/chat" replace />} />
           </Routes>

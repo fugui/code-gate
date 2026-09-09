@@ -13,13 +13,13 @@ import (
 )
 
 var (
-	ErrNoBackendAvailable    = errors.New("目标模型无健康可用的物理后端实例")
-	ErrNoCompatibleBackend   = errors.New("目标模型下无物理实例支持所请求的协议端点")
-	ErrModelNotFound         = errors.New("目标模型不存在或未启用")
+	ErrNoBackendAvailable  = errors.New("目标模型无健康可用的物理后端实例")
+	ErrNoCompatibleBackend = errors.New("目标模型下无物理实例支持所请求的协议端点")
+	ErrModelNotFound       = errors.New("目标模型不存在或未启用")
 )
 
 const (
-	StrategyWeightedLeastConn = "least_conn"
+	StrategyWeightedLeastConn  = "least_conn"
 	StrategyWeightedRoundRobin = "round_robin"
 )
 

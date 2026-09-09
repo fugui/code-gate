@@ -13,7 +13,8 @@ func TestClientFilterMiddleware(t *testing.T) {
 	r := gin.New()
 
 	blocked := []string{"sqlmap", "nikto", "acunetix", "bad-bot"}
-	r.Use(ClientFilterMiddleware(blocked))
+	filter := NewDynamicClientFilter(blocked)
+	r.Use(ClientFilterMiddleware(filter))
 	r.GET("/test", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -51,5 +52,15 @@ func TestClientFilterMiddleware(t *testing.T) {
 	r.ServeHTTP(w4, req4)
 	if w4.Code != http.StatusForbidden {
 		t.Errorf("Nikto 扫描器期望 403，实际返回 %d", w4.Code)
+	}
+
+	// 5. 动态热重载：新增拦截 custom-crawler
+	filter.SetBlockedUAs(append(filter.GetBlockedUAs(), "custom-crawler"))
+	req5, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	req5.Header.Set("User-Agent", "Custom-Crawler/1.0")
+	w5 := httptest.NewRecorder()
+	r.ServeHTTP(w5, req5)
+	if w5.Code != http.StatusForbidden {
+		t.Errorf("热重载后的 custom-crawler 期望 403，实际返回 %d", w5.Code)
 	}
 }

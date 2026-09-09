@@ -53,6 +53,9 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		&models.Backend{},
 		&models.APIKey{},
 		&models.AccessLog{},
+		&models.SystemSetting{},
+		&models.User{},
+		&models.Department{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("数据表自动迁移失败: %w", err)
@@ -77,6 +80,7 @@ func seedDefaults(db *gorm.DB, cfg *config.Config) {
 		allModels, _ := json.Marshal([]string{"*"})
 		guestPolicy = models.QuotaPolicy{
 			Name:               "guest_policy",
+			Description:        "默认普通访客配额策略",
 			DailyCreditsLimit:  cfg.Defaults.GuestQuota.DailyCredits,
 			WeeklyCreditsLimit: cfg.Defaults.GuestQuota.WeeklyCredits,
 			RateLimitRPM:       cfg.Defaults.GuestQuota.RateLimitRPM,
@@ -95,6 +99,7 @@ func seedDefaults(db *gorm.DB, cfg *config.Config) {
 		allModels, _ := json.Marshal([]string{"*"})
 		devPolicy = models.QuotaPolicy{
 			Name:               "developer_policy",
+			Description:        "内部认证开发者标准配额策略",
 			DailyCreditsLimit:  500.0,
 			WeeklyCreditsLimit: 2000.0,
 			RateLimitRPM:       120,
@@ -110,6 +115,7 @@ func seedDefaults(db *gorm.DB, cfg *config.Config) {
 		allModels, _ := json.Marshal([]string{"*"})
 		adminPolicy = models.QuotaPolicy{
 			Name:               "admin_policy",
+			Description:        "平台运维超级管理员无限算力策略",
 			DailyCreditsLimit:  100000.0,
 			WeeklyCreditsLimit: 500000.0,
 			RateLimitRPM:       1000,
@@ -118,6 +124,57 @@ func seedDefaults(db *gorm.DB, cfg *config.Config) {
 		}
 		_ = db.Create(&adminPolicy).Error
 	}
+
+	// 4. 初始化安全拦截 User-Agent 列表
+	var setting models.SystemSetting
+	if err := db.Where("key = ?", "security.blocked_user_agents").First(&setting).Error; err != nil {
+		uas := cfg.Security.BlockedUserAgents
+		if len(uas) == 0 {
+			uas = []string{"sqlmap", "nikto", "acunetix", "havij", "masscan"}
+		}
+		valBytes, _ := json.Marshal(uas)
+		setting = models.SystemSetting{
+			Key:   "security.blocked_user_agents",
+			Value: string(valBytes),
+		}
+		_ = db.Create(&setting).Error
+	}
+}
+
+// GetBlockedUserAgents 获取当前保存的黑名单 UA，若不存在则回退至 fallback
+func GetBlockedUserAgents(db *gorm.DB, fallback []string) []string {
+	if db == nil {
+		return fallback
+	}
+	var setting models.SystemSetting
+	if err := db.Where("key = ?", "security.blocked_user_agents").First(&setting).Error; err == nil && setting.Value != "" {
+		var list []string
+		if err := json.Unmarshal([]byte(setting.Value), &list); err == nil && len(list) > 0 {
+			return list
+		}
+	}
+	return fallback
+}
+
+// SaveBlockedUserAgents 保存黑名单 UA 列表
+func SaveBlockedUserAgents(db *gorm.DB, uas []string) error {
+	if db == nil {
+		return fmt.Errorf("数据库连接不可用")
+	}
+	valBytes, err := json.Marshal(uas)
+	if err != nil {
+		return err
+	}
+	var setting models.SystemSetting
+	if err := db.Where("key = ?", "security.blocked_user_agents").First(&setting).Error; err == nil {
+		setting.Value = string(valBytes)
+		return db.Save(&setting).Error
+	}
+	setting = models.SystemSetting{
+		Key:   "security.blocked_user_agents",
+		Value: string(valBytes),
+	}
+	return db.Create(&setting).Error
 }
 
 // InitOrGetUserQuota 获取或自动初始化指定用户的 CodeGate 配额记录与算力台账

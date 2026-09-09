@@ -67,28 +67,33 @@ func main() {
 
 	// 3. 启动后台协议与健康探活协程
 	prober := routing.NewProber(5 * time.Second)
+	routing.SetGlobalProber(prober)
 	prober.Start(30 * time.Second)
 
 	// 4. 启动审计日志定时轮转清理协程
 	cleanupStopChan := audit.StartLogCleanupTask(store.GetDB(), 7, 24*time.Hour)
 
-	// 5. 基于 code-common/backend/server 脚手架启动微服务
+	// 5. 注入运行时配置快照与初始化动态安全过滤器
+	api.SetRuntimeServerConfig(cfg.Server.ReadTimeout.String(), cfg.Server.WriteTimeout.String(), cfg.Server.IdleTimeout.String(), cfg.Server.MaxHeaderBytes)
+	dynamicFilter := api.GetGlobalClientFilter(store.GetBlockedUserAgents(store.GetDB(), cfg.Security.BlockedUserAgents))
+
+	// 6. 基于 code-common/backend/server 脚手架启动微服务
 	servicePrefix := cfg.Server.Prefix
 	if servicePrefix == "" {
 		servicePrefix = "gate"
 	}
 
 	serverOpts := server.Options{
-		ServiceName:       "Code-Gate",
-		Prefix:            servicePrefix,
-		Port:              cfg.Server.Port,
-		GinLog:            cfg.Server.GinLog,
-		ReadTimeout:       cfg.Server.ReadTimeout,
-		WriteTimeout:      cfg.Server.WriteTimeout,
-		IdleTimeout:       cfg.Server.IdleTimeout,
-		MaxHeaderBytes:    cfg.Server.MaxHeaderBytes,
-		FrontendFS:        &frontendFS,
-		FrontendDistPath:  "frontend/dist",
+		ServiceName:      "Code-Gate",
+		Prefix:           servicePrefix,
+		Port:             cfg.Server.Port,
+		GinLog:           cfg.Server.GinLog,
+		ReadTimeout:      cfg.Server.ReadTimeout,
+		WriteTimeout:     cfg.Server.WriteTimeout,
+		IdleTimeout:      cfg.Server.IdleTimeout,
+		MaxHeaderBytes:   cfg.Server.MaxHeaderBytes,
+		FrontendFS:       &frontendFS,
+		FrontendDistPath: "frontend/dist",
 		ExtraNoRoute: func(c *gin.Context) bool {
 			p := c.Request.URL.Path
 			if strings.HasPrefix(p, "/gate/v1") || strings.HasPrefix(p, "/v1") {
@@ -104,8 +109,8 @@ func main() {
 			return false
 		},
 		RegisterRoutes: func(r *gin.Engine) {
-			// 全局动态客户端安全过滤：阻断恶意扫描器与非法爬虫
-			r.Use(api.ClientFilterMiddleware(cfg.Security.BlockedUserAgents))
+			// 全局动态客户端安全过滤：阻断恶意扫描器与非法爬虫 (支持秒级热重载)
+			r.Use(api.ClientFilterMiddleware(dynamicFilter))
 
 			// 免密开放接口：健康探针与模型列表只读元数据
 			r.GET("/health", func(c *gin.Context) {
@@ -133,29 +138,48 @@ func main() {
 				v1Group.POST("/user/keys", api.HandleCreateUserKey)
 				v1Group.DELETE("/user/keys/:id", api.HandleDeleteUserKey)
 
-				// 管理员受保护管理路由组
+				// 管理员受保护管理路由组 (Control Plane)
 				adminGroup := v1Group.Group("/admin")
 				adminGroup.Use(api.RequireAdmin())
 				{
 					// 监控大屏全景指标
 					adminGroup.GET("/dashboard", api.HandleAdminGetDashboard)
 
-					// 用户与配额管理
+					// 用户配额与台账
 					adminGroup.GET("/users", api.HandleAdminListUsers)
 					adminGroup.PUT("/users/:id/quota", api.HandleAdminUpdateUserQuota)
 
-					// 策略定义
+					// 配额策略池管理
 					adminGroup.GET("/policies", api.HandleAdminListPolicies)
 					adminGroup.POST("/policies", api.HandleAdminSavePolicy)
+					adminGroup.PUT("/policies/:id", api.HandleAdminSavePolicy)
+					adminGroup.DELETE("/policies/:id", api.HandleAdminDeletePolicy)
 
-					// 逻辑模型管理
+					// 逻辑模型 1:N 治理与网关批量导入
+					adminGroup.GET("/models", api.HandleAdminListModels)
 					adminGroup.POST("/models", api.HandleAdminSaveModel)
+					adminGroup.PUT("/models/:id", api.HandleAdminSaveModel)
+					adminGroup.PATCH("/models/:id/toggle", api.HandleAdminToggleModel)
 					adminGroup.DELETE("/models/:id", api.HandleAdminDeleteModel)
+					adminGroup.POST("/models/import", api.HandleAdminImportModels)
 
-					// 物理后端实例管理与探活状态
+					// 物理后端实例管理
 					adminGroup.GET("/backends", api.HandleAdminListBackends)
 					adminGroup.POST("/backends", api.HandleAdminSaveBackend)
+					adminGroup.PUT("/backends/:id", api.HandleAdminSaveBackend)
+					adminGroup.PATCH("/backends/:id/toggle", api.HandleAdminToggleBackend)
 					adminGroup.DELETE("/backends/:id", api.HandleAdminDeleteBackend)
+
+					// 全景健康与细粒度并发实时水位监控
+					adminGroup.GET("/health", api.HandleAdminGetHealth)
+					adminGroup.POST("/health/probe", api.HandleAdminTriggerProbe)
+
+					// 系统运行时配置与动态客户端安全过滤
+					adminGroup.GET("/config/system", api.HandleAdminGetSystemConfig)
+					adminGroup.PUT("/config/system", api.HandleAdminUpdateSystemConfig)
+
+					// 7 天 TOP 算力消费者交叉透视矩阵大账
+					adminGroup.GET("/top-consumers", api.HandleAdminGetTopConsumers)
 
 					// 审计日志检索
 					adminGroup.GET("/logs", api.HandleAdminListLogs)

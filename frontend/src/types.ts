@@ -41,30 +41,52 @@ export interface ModelItem {
 
 export interface BackendItem {
   id: number
+  model_id: number
   name: string
   base_url: string
+  api_key?: string
   weight: number
-  max_connections: number
+  max_concurrency?: number
+  max_connections?: number
   active_connections: number
   is_healthy: boolean
-  last_check_at: string
+  is_enabled: boolean
+  last_check_at?: string
   latency_ms: number
   consecutive_failures: number
-  supports_chat: boolean
-  supports_responses: boolean
-  capabilities?: {
-    chat: boolean
-    responses: boolean
-  }
+  declared_protocols?: string[]
+  detected_protocols?: string[]
+  supports_chat?: boolean
+  supports_responses?: boolean
+}
+
+export interface ModelDetailItem {
+  id: number
+  name: string
+  description: string
+  multiplier: number
+  default_model: string
+  model_params: Record<string, any>
+  is_enabled: boolean
+  backends?: BackendItem[]
+  backends_count?: number
+  active_backends_count?: number
+  created_at: string
+  updated_at: string
 }
 
 export interface QuotaPolicyItem {
   id: number
   name: string
+  description?: string
   daily_credits_limit: number
   weekly_credits_limit: number
   rate_limit_rpm: number
-  model_whitelist: string[]
+  time_ranges?: Array<{ start: string; end: string }> | string
+  model_whitelist?: string[] | string
+  default_model?: string
+  user_count?: number
+  created_at?: string
 }
 
 export interface UserQuotaDTO {
@@ -72,7 +94,9 @@ export interface UserQuotaDTO {
   username: string
   name: string
   email: string
+  department?: string
   role: string
+  policy_id?: number
   policy_name: string
   daily_limit: number
   weekly_limit: number
@@ -157,3 +181,75 @@ export interface DashboardData {
   recent_errors: AccessLogItem[]
 }
 
+// 4. 健康与实时并发大盘数据结构
+export interface BackendHealthItem {
+  id: number
+  model_id: number
+  model_name: string
+  name: string
+  base_url: string
+  weight: number
+  max_concurrency: number
+  active_connections: number
+  utilization_ratio: number
+  is_healthy: boolean
+  is_enabled: boolean
+  latency_ms: number
+  consecutive_failures: number
+  last_check_at?: string
+  declared_protocols?: string[]
+  detected_protocols?: string[]
+}
+
+export interface HealthMatrixData {
+  summary: {
+    total_backends: number
+    healthy_backends: number
+    fault_backends: number
+    avg_latency_ms: number
+  }
+  backends: BackendHealthItem[]
+}
+
+// 5. 系统运行时配置
+export interface SystemConfigData {
+  blocked_user_agents: string[]
+  read_timeout: string
+  write_timeout: string
+  idle_timeout: string
+  max_header_bytes: number
+}
+
+// 6. 7天算力逐日交叉透视矩阵
+export interface DailyConsumerMetric {
+  date: string
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  cost_credits: number
+}
+
+export interface UserTopConsumerRow {
+  user_id: number
+  name: string
+  username: string
+  email: string
+  department: string
+  daily: Record<string, DailyConsumerMetric>
+  total_req: number
+  total_tokens: number
+  total_credits: number
+}
+
+export interface GrandTotalRow {
+  daily: Record<string, DailyConsumerMetric>
+  total_req: number
+  total_tokens: number
+  total_credits: number
+}
+
+export interface TopConsumersData {
+  dates: string[]
+  users: UserTopConsumerRow[]
+  grand_total: GrandTotalRow
+}

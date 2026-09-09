@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -281,3 +282,177 @@ func TestHandleAdminGetDashboard(t *testing.T) {
 	}
 }
 
+func TestAdminPolicySafetyDelete(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg, err := config.Load("../../config.yaml.example")
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	db, err := store.InitDB(cfg)
+	if err != nil {
+		t.Skipf("无法连接数据库，跳过测试")
+		return
+	}
+
+	// 1. 创建测试策略
+	policy := models.QuotaPolicy{
+		Name:               "test_bound_policy",
+		DailyCreditsLimit:  100,
+		WeeklyCreditsLimit: 400,
+	}
+	_ = db.Create(&policy)
+	defer db.Delete(&policy)
+
+	// 2. 绑定一个用户
+	testUID := uint(88888)
+	quota := models.GateUserQuota{
+		UserID:   testUID,
+		Role:     models.RoleDeveloper,
+		PolicyID: &policy.ID,
+	}
+	_ = db.Create(&quota)
+	defer db.Delete(&quota)
+
+	r := gin.New()
+	adminGroup := r.Group("/admin")
+	adminGroup.Use(func(c *gin.Context) {
+		c.Set(auth.ContextIsAdmin, true)
+		c.Next()
+	})
+	adminGroup.DELETE("/policies/:id", HandleAdminDeletePolicy)
+
+	// 尝试删除被绑定的策略，期望返回 400
+	req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/policies/%d", policy.ID), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("期望返回 400 拒绝删除有用户绑定的策略，实际返回 %d", w.Code)
+	}
+
+	// 解绑用户后再次删除，期望成功 200
+	db.Delete(&quota)
+	req2, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/policies/%d", policy.ID), nil)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("解绑后删除策略期望 200，实际返回 %d", w2.Code)
+	}
+}
+
+func TestAdminModelAndBackendLifecycle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg, err := config.Load("../../config.yaml.example")
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	db, err := store.InitDB(cfg)
+	if err != nil {
+		t.Skipf("无法连接数据库，跳过测试")
+		return
+	}
+
+	r := gin.New()
+	adminGroup := r.Group("/admin")
+	adminGroup.Use(func(c *gin.Context) {
+		c.Set(auth.ContextIsAdmin, true)
+		c.Next()
+	})
+	adminGroup.GET("/models", HandleAdminListModels)
+	adminGroup.POST("/models", HandleAdminSaveModel)
+	adminGroup.PATCH("/models/:id/toggle", HandleAdminToggleModel)
+	adminGroup.DELETE("/models/:id", HandleAdminDeleteModel)
+
+	// 1. 创建模型并附带首个后端
+	createReq := `{"name":"test-auto-model","multiplier":2.0,"initial_backend":{"base_url":"http://192.168.56.18:8000","weight":10,"max_concurrency":20}}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/admin/models", bytes.NewReader([]byte(createReq)))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("创建模型接口失败: %d, body: %s", w.Code, w.Body.String())
+	}
+
+	var m models.Model
+	if err := db.Preload("Backends").Where("name = ?", "test-auto-model").First(&m).Error; err != nil {
+		t.Fatalf("数据库中未找到新模型: %v", err)
+	}
+	defer db.Delete(&m)
+	if len(m.Backends) != 1 {
+		t.Fatalf("期望自动创建 1 个物理后端，实际为 %d", len(m.Backends))
+	}
+	defer db.Delete(&m.Backends[0])
+
+	// 2. 切换模型状态
+	wToggle := httptest.NewRecorder()
+	reqToggle, _ := http.NewRequest(http.MethodPatch, fmt.Sprintf("/admin/models/%d/toggle", m.ID), nil)
+	r.ServeHTTP(wToggle, reqToggle)
+	if wToggle.Code != http.StatusOK {
+		t.Fatalf("切换模型状态失败: %d", wToggle.Code)
+	}
+
+	var mUpdated models.Model
+	db.First(&mUpdated, m.ID)
+	if mUpdated.IsEnabled != false {
+		t.Errorf("期望切换后 is_enabled=false, 实际为 %v", mUpdated.IsEnabled)
+	}
+
+	// 3. 删除模型及其后端
+	wDel := httptest.NewRecorder()
+	reqDel, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/models/%d", m.ID), nil)
+	r.ServeHTTP(wDel, reqDel)
+	if wDel.Code != http.StatusOK {
+		t.Fatalf("删除模型失败: %d", wDel.Code)
+	}
+}
+
+func TestAdminSystemConfigAndHotReload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg, err := config.Load("../../config.yaml.example")
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	db, err := store.InitDB(cfg)
+	if err != nil {
+		t.Skipf("无法连接数据库，跳过测试")
+		return
+	}
+
+	_ = db
+	filter := GetGlobalClientFilter([]string{"sqlmap"})
+	SetRuntimeServerConfig("30m", "30m", "120s", 1048576)
+
+	r := gin.New()
+	adminGroup := r.Group("/admin")
+	adminGroup.Use(func(c *gin.Context) {
+		c.Set(auth.ContextIsAdmin, true)
+		c.Next()
+	})
+	adminGroup.GET("/config/system", HandleAdminGetSystemConfig)
+	adminGroup.PUT("/config/system", HandleAdminUpdateSystemConfig)
+
+	// 1. 获取系统配置
+	wGet := httptest.NewRecorder()
+	reqGet, _ := http.NewRequest(http.MethodGet, "/admin/config/system", nil)
+	r.ServeHTTP(wGet, reqGet)
+	if wGet.Code != http.StatusOK {
+		t.Fatalf("获取配置失败: %d", wGet.Code)
+	}
+
+	// 2. 更新配置热重载
+	updateReq := `{"blocked_user_agents":["sqlmap","test-blocked-bot"]}`
+	wPut := httptest.NewRecorder()
+	reqPut, _ := http.NewRequest(http.MethodPut, "/admin/config/system", bytes.NewReader([]byte(updateReq)))
+	reqPut.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(wPut, reqPut)
+
+	if wPut.Code != http.StatusOK {
+		t.Fatalf("更新配置失败: %d", wPut.Code)
+	}
+
+	if !filter.IsBlocked("Test-Blocked-Bot v1.0") {
+		t.Errorf("期望热重载后能够阻断 Test-Blocked-Bot")
+	}
+}

@@ -1,4 +1,17 @@
-import { UserProfile, APIKeyItem, ModelItem, BackendItem, QuotaPolicyItem, UserQuotaDTO, AccessLogItem, DashboardData } from '../types'
+import {
+  UserProfile,
+  APIKeyItem,
+  ModelItem,
+  BackendItem,
+  ModelDetailItem,
+  QuotaPolicyItem,
+  UserQuotaDTO,
+  AccessLogItem,
+  DashboardData,
+  HealthMatrixData,
+  SystemConfigData,
+  TopConsumersData,
+} from '../types'
 
 export const getBaseApiPrefix = (): string => {
   if (typeof window !== 'undefined') {
@@ -60,19 +73,17 @@ export async function apiRequest<T>(url: string, options: RequestInit = {}): Pro
   return res.json()
 }
 
-// 获取个人配额资产
+// 1. 用户资产与密钥
 export async function fetchUserProfile(): Promise<UserProfile> {
   const res = await apiRequest<{ data: UserProfile }>(`${getBaseApiPrefix()}/user/profile`)
   return res.data
 }
 
-// 获取 API Keys
 export async function fetchUserKeys(): Promise<APIKeyItem[]> {
   const res = await apiRequest<{ data: APIKeyItem[] }>(`${getBaseApiPrefix()}/user/keys`)
   return res.data
 }
 
-// 创建 API Key
 export async function createAPIKey(name: string, expiresIn: number): Promise<APIKeyItem & { raw_key: string }> {
   const res = await apiRequest<{ data: APIKeyItem & { raw_key: string } }>(`${getBaseApiPrefix()}/user/keys`, {
     method: 'POST',
@@ -81,20 +92,18 @@ export async function createAPIKey(name: string, expiresIn: number): Promise<API
   return res.data
 }
 
-// 删除 API Key
 export async function deleteAPIKey(id: number): Promise<void> {
   await apiRequest(`${getBaseApiPrefix()}/user/keys/${id}`, {
     method: 'DELETE',
   })
 }
 
-// 获取模型列表
 export async function fetchModels(): Promise<ModelItem[]> {
   const res = await apiRequest<{ data: ModelItem[] }>(`${getBaseApiPrefix()}/models`)
   return res.data
 }
 
-// 管理员：获取用户列表
+// 2. 用户管理
 export async function fetchAdminUsers(page = 1, pageSize = 25, search = ''): Promise<{ data: UserQuotaDTO[]; total: number }> {
   const params = new URLSearchParams({
     page: String(page),
@@ -104,10 +113,9 @@ export async function fetchAdminUsers(page = 1, pageSize = 25, search = ''): Pro
   return apiRequest(`${getBaseApiPrefix()}/admin/users?${params.toString()}`)
 }
 
-// 管理员：调整用户配额
 export async function updateUserQuota(
   userId: number,
-  payload: { role: string; custom_daily_credits?: number; custom_weekly_credits?: number }
+  payload: { role: string; policy_id?: number; custom_daily_credits?: number; custom_weekly_credits?: number }
 ): Promise<void> {
   await apiRequest(`${getBaseApiPrefix()}/admin/users/${userId}/quota`, {
     method: 'PUT',
@@ -115,19 +123,64 @@ export async function updateUserQuota(
   })
 }
 
-// 管理员：查询策略
+// 3. 配额策略池
 export async function fetchAdminPolicies(): Promise<QuotaPolicyItem[]> {
   const res = await apiRequest<{ data: QuotaPolicyItem[] }>(`${getBaseApiPrefix()}/admin/policies`)
   return res.data
 }
 
-// 管理员：查询后端
+export async function saveAdminPolicy(policy: Partial<QuotaPolicyItem>): Promise<QuotaPolicyItem> {
+  const res = await apiRequest<{ data: QuotaPolicyItem }>(`${getBaseApiPrefix()}/admin/policies`, {
+    method: 'POST',
+    body: JSON.stringify(policy),
+  })
+  return res.data
+}
+
+export async function deleteAdminPolicy(id: number): Promise<void> {
+  await apiRequest(`${getBaseApiPrefix()}/admin/policies/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+// 4. 逻辑模型 1:N 治理与网关批量导入
+export async function fetchAdminModels(): Promise<ModelDetailItem[]> {
+  const res = await apiRequest<{ data: ModelDetailItem[] }>(`${getBaseApiPrefix()}/admin/models`)
+  return res.data
+}
+
+export async function saveAdminModel(model: Partial<ModelDetailItem> & { initial_backend?: any }): Promise<void> {
+  await apiRequest(`${getBaseApiPrefix()}/admin/models`, {
+    method: 'POST',
+    body: JSON.stringify(model),
+  })
+}
+
+export async function toggleAdminModel(id: number): Promise<{ is_enabled: boolean }> {
+  return apiRequest(`${getBaseApiPrefix()}/admin/models/${id}/toggle`, {
+    method: 'PATCH',
+  })
+}
+
+export async function deleteAdminModel(id: number): Promise<void> {
+  await apiRequest(`${getBaseApiPrefix()}/admin/models/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function importGatewayModels(req: { prefix: string; base_url: string; api_key?: string }): Promise<{ message: string; imported_count: number }> {
+  return apiRequest(`${getBaseApiPrefix()}/admin/models/import`, {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}
+
+// 5. 物理后端实例
 export async function fetchAdminBackends(): Promise<BackendItem[]> {
   const res = await apiRequest<{ data: BackendItem[] }>(`${getBaseApiPrefix()}/admin/backends`)
   return res.data
 }
 
-// 管理员：保存后端
 export async function saveAdminBackend(backend: Partial<BackendItem>): Promise<void> {
   await apiRequest(`${getBaseApiPrefix()}/admin/backends`, {
     method: 'POST',
@@ -135,14 +188,50 @@ export async function saveAdminBackend(backend: Partial<BackendItem>): Promise<v
   })
 }
 
-// 管理员：删除后端
+export async function toggleAdminBackend(id: number): Promise<{ is_enabled: boolean }> {
+  return apiRequest(`${getBaseApiPrefix()}/admin/backends/${id}/toggle`, {
+    method: 'PATCH',
+  })
+}
+
 export async function deleteAdminBackend(id: number): Promise<void> {
   await apiRequest(`${getBaseApiPrefix()}/admin/backends/${id}`, {
     method: 'DELETE',
   })
 }
 
-// 管理员：查询日志
+// 6. 全景健康与细粒度并发实时水位大盘
+export async function fetchAdminHealth(): Promise<HealthMatrixData> {
+  const res = await apiRequest<{ data: HealthMatrixData }>(`${getBaseApiPrefix()}/admin/health`)
+  return res.data
+}
+
+export async function triggerAdminProbe(): Promise<{ message: string }> {
+  return apiRequest(`${getBaseApiPrefix()}/admin/health/probe`, {
+    method: 'POST',
+  })
+}
+
+// 7. 系统运行时配置与动态客户端过滤热重载
+export async function fetchAdminSystemConfig(): Promise<SystemConfigData> {
+  const res = await apiRequest<{ data: SystemConfigData }>(`${getBaseApiPrefix()}/admin/config/system`)
+  return res.data
+}
+
+export async function updateAdminSystemConfig(payload: { blocked_user_agents: string[] }): Promise<{ message: string }> {
+  return apiRequest(`${getBaseApiPrefix()}/admin/config/system`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+// 8. 7天 TOP 算力消费者交叉透视矩阵大账
+export async function fetchAdminTopConsumers(): Promise<TopConsumersData> {
+  const res = await apiRequest<{ data: TopConsumersData }>(`${getBaseApiPrefix()}/admin/top-consumers`)
+  return res.data
+}
+
+// 9. 审计日志与监控大屏
 export async function fetchAdminLogs(
   page = 1,
   pageSize = 25,
@@ -158,9 +247,7 @@ export async function fetchAdminLogs(
   return apiRequest(`${getBaseApiPrefix()}/admin/logs?${params.toString()}`)
 }
 
-// 管理员：获取监控大屏全景指标
 export async function fetchAdminDashboard(): Promise<DashboardData> {
   const res = await apiRequest<{ data: DashboardData }>(`${getBaseApiPrefix()}/admin/dashboard`)
   return res.data
 }
-

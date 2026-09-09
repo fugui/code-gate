@@ -35,9 +35,30 @@ func NewProber(timeout time.Duration) *Prober {
 	}
 }
 
-// ProbeBackend 探测单个后端实例的基础健康状态与协议支持能力
-func (p *Prober) ProbeBackend(ctx context.Context, b *models.Backend) (bool, []string) {
+var (
+	globalProber     *Prober
+	globalProberLock sync.RWMutex
+)
+
+// SetGlobalProber 设置全局 Prober 实例
+func SetGlobalProber(p *Prober) {
+	globalProberLock.Lock()
+	defer globalProberLock.Unlock()
+	globalProber = p
+}
+
+// GetGlobalProber 获取全局 Prober 实例
+func GetGlobalProber() *Prober {
+	globalProberLock.RLock()
+	defer globalProberLock.RUnlock()
+	return globalProber
+}
+
+// ProbeBackend 探测单个后端实例的基础健康状态、协议支持能力与网络时延
+func (p *Prober) ProbeBackend(ctx context.Context, b *models.Backend) (bool, []string, int64) {
 	baseURL := strings.TrimRight(b.BaseURL, "/")
+
+	start := time.Now()
 
 	// 1. 探测 OpenAI Chat 协议支持与基本健康度
 	chatURL := baseURL + "/chat/completions"
@@ -47,7 +68,7 @@ func (p *Prober) ProbeBackend(ctx context.Context, b *models.Backend) (bool, []s
 
 	chatReq, err := http.NewRequestWithContext(ctx, http.MethodPost, chatURL, bytes.NewReader([]byte("{}")))
 	if err != nil {
-		return false, []string{}
+		return false, []string{}, 0
 	}
 	chatReq.Header.Set("Content-Type", "application/json")
 	if b.APIKey != "" {
@@ -55,9 +76,10 @@ func (p *Prober) ProbeBackend(ctx context.Context, b *models.Backend) (bool, []s
 	}
 
 	chatResp, err := p.client.Do(chatReq)
+	latency := time.Since(start).Milliseconds()
 	if err != nil {
 		// 网络不可达或超时
-		return false, []string{}
+		return false, []string{}, latency
 	}
 	chatResp.Body.Close()
 
@@ -91,7 +113,7 @@ func (p *Prober) ProbeBackend(ctx context.Context, b *models.Backend) (bool, []s
 		}
 	}
 
-	return isHealthy, supportedProtos
+	return isHealthy, supportedProtos, latency
 }
 
 // CheckAll 执行一次全量后端实例探活与协议打标
@@ -106,19 +128,29 @@ func (p *Prober) CheckAll(ctx context.Context) {
 		return
 	}
 
+	now := time.Now()
 	for i := range backends {
 		b := &backends[i]
-		healthy, protos := p.ProbeBackend(ctx, b)
+		healthy, protos, latency := p.ProbeBackend(ctx, b)
 
 		protosJSON, _ := json.Marshal(protos)
+		consecutiveFailures := 0
+		if !healthy {
+			consecutiveFailures = b.ConsecutiveFailures + 1
+		}
+
 		_ = db.Model(&models.Backend{}).
 			Where("id = ?", b.ID).
 			Updates(map[string]interface{}{
-				"is_healthy":         healthy,
-				"detected_protocols": datatypes.JSON(protosJSON),
+				"is_healthy":           healthy,
+				"detected_protocols":   datatypes.JSON(protosJSON),
+				"latency_ms":           latency,
+				"consecutive_failures": consecutiveFailures,
+				"last_check_at":        now,
 			})
 
-		log.Printf("[Prober] 后端实例 [%s] 探测完成: Healthy=%v, Protocols=%v", b.Name, healthy, protos)
+		log.Printf("[Prober] 后端实例 [%s] 探测完成: Healthy=%v, Latency=%dms, Failures=%d, Protocols=%v",
+			b.Name, healthy, latency, consecutiveFailures, protos)
 	}
 }
 

@@ -117,9 +117,12 @@ func TestProbeBackend(t *testing.T) {
 		BaseURL: mockServer.URL,
 	}
 
-	healthy, protos := prober.ProbeBackend(context.Background(), backend)
+	healthy, protos, latency := prober.ProbeBackend(context.Background(), backend)
 	if !healthy {
 		t.Errorf("ProbeBackend healthy 期望 true, 得到 false")
+	}
+	if latency < 0 {
+		t.Errorf("ProbeBackend latency 期望 >= 0, 得到 %d", latency)
 	}
 	if len(protos) != 1 || protos[0] != models.ProtocolChat {
 		t.Errorf("ProbeBackend 协议识别错误: 期望仅包含 chat, 得到 %v", protos)

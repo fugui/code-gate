@@ -25,8 +25,8 @@ var (
 
 // Engine 双周期弹性配额与限流引擎
 type Engine struct {
-	rateMap  sync.Map // map[uint]*slidingWindow
-	mu       sync.Mutex
+	rateMap sync.Map // map[uint]*slidingWindow
+	mu      sync.Mutex
 }
 
 // slidingWindow 简单的内存滑动时间窗口
@@ -269,4 +269,3 @@ func parseHourMinute(s string) (int, error) {
 	}
 	return h*60 + m, nil
 }
-

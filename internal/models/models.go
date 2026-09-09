@@ -23,39 +23,41 @@ const (
 
 // GateUserQuota 用户在 CodeGate 内部的专属配额角色与限额映射
 type GateUserQuota struct {
-	ID                  uint           `gorm:"primaryKey" json:"id"`
-	UserID              uint           `gorm:"uniqueIndex;not null" json:"user_id"` // 关联 CodeBench 统一用户 ID
-	Role                string         `gorm:"size:32;not null;default:'guest'" json:"role"`
-	PolicyID            *uint          `gorm:"index" json:"policy_id,omitempty"`
-	Policy              *QuotaPolicy   `gorm:"foreignKey:PolicyID" json:"policy,omitempty"`
-	CustomDailyCredits  *float64       `json:"custom_daily_credits,omitempty"`
-	CustomWeeklyCredits *float64       `json:"custom_weekly_credits,omitempty"`
-	CreatedAt           time.Time      `json:"created_at"`
-	UpdatedAt           time.Time      `json:"updated_at"`
+	ID                  uint         `gorm:"primaryKey" json:"id"`
+	UserID              uint         `gorm:"uniqueIndex;not null" json:"user_id"` // 关联 CodeBench 统一用户 ID
+	Role                string       `gorm:"size:32;not null;default:'guest'" json:"role"`
+	PolicyID            *uint        `gorm:"index" json:"policy_id,omitempty"`
+	Policy              *QuotaPolicy `gorm:"foreignKey:PolicyID" json:"policy,omitempty"`
+	CustomDailyCredits  *float64     `json:"custom_daily_credits,omitempty"`
+	CustomWeeklyCredits *float64     `json:"custom_weekly_credits,omitempty"`
+	CreatedAt           time.Time    `json:"created_at"`
+	UpdatedAt           time.Time    `json:"updated_at"`
 }
 
 // QuotaPolicy 配额策略定义
 type QuotaPolicy struct {
 	ID                 uint           `gorm:"primaryKey" json:"id"`
 	Name               string         `gorm:"size:64;uniqueIndex;not null" json:"name"`
+	Description        string         `gorm:"size:255;default:''" json:"description"`
 	DailyCreditsLimit  float64        `gorm:"not null" json:"daily_credits_limit"`
 	WeeklyCreditsLimit float64        `gorm:"not null" json:"weekly_credits_limit"` // 默认约为日配额 4 倍
 	RateLimitRPM       int            `gorm:"default:60" json:"rate_limit_rpm"`
 	TimeRanges         datatypes.JSON `gorm:"type:jsonb;default:'[]'" json:"time_ranges"`
 	ModelWhitelist     datatypes.JSON `gorm:"type:jsonb;default:'[\"*\"]'" json:"model_whitelist"`
+	DefaultModel       string         `gorm:"size:128;default:''" json:"default_model"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
 }
 
 // CreditsWallet 用户算力日/周消耗台账
 type CreditsWallet struct {
-	ID             uint      `gorm:"primaryKey" json:"id"`
-	UserID         uint      `gorm:"uniqueIndex;not null" json:"user_id"`
-	DailyConsumed  float64   `gorm:"default:0" json:"daily_consumed"`
-	WeeklyConsumed float64   `gorm:"default:0" json:"weekly_consumed"`
-	LastDailyReset time.Time `json:"last_daily_reset"`
+	ID              uint      `gorm:"primaryKey" json:"id"`
+	UserID          uint      `gorm:"uniqueIndex;not null" json:"user_id"`
+	DailyConsumed   float64   `gorm:"default:0" json:"daily_consumed"`
+	WeeklyConsumed  float64   `gorm:"default:0" json:"weekly_consumed"`
+	LastDailyReset  time.Time `json:"last_daily_reset"`
 	LastWeeklyReset time.Time `json:"last_weekly_reset"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // Model 逻辑模型定义
@@ -74,19 +76,32 @@ type Model struct {
 
 // Backend 物理后端实例
 type Backend struct {
-	ID                 uint           `gorm:"primaryKey" json:"id"`
-	ModelID            uint           `gorm:"index;not null" json:"model_id"`
-	Name               string         `gorm:"size:128;default:''" json:"name"`
-	BaseURL            string         `gorm:"size:255;not null" json:"base_url"`
-	APIKey             string         `gorm:"size:255;default:''" json:"-"`
-	Weight             int            `gorm:"default:1" json:"weight"`
-	MaxConcurrency     int32          `gorm:"default:10" json:"max_concurrency"`
-	DeclaredProtocols  datatypes.JSON `gorm:"type:jsonb;default:'[\"chat\"]'" json:"declared_protocols"`
-	DetectedProtocols  datatypes.JSON `gorm:"type:jsonb;default:'[\"chat\"]'" json:"detected_protocols"`
-	IsHealthy          bool           `gorm:"default:true" json:"is_healthy"`
-	ActiveConnections  int32          `gorm:"-" json:"active_connections"` // 内存无锁并发计数器
-	CreatedAt          time.Time      `json:"created_at"`
-	UpdatedAt          time.Time      `json:"updated_at"`
+	ID                  uint           `gorm:"primaryKey" json:"id"`
+	ModelID             uint           `gorm:"index;not null" json:"model_id"`
+	Name                string         `gorm:"size:128;default:''" json:"name"`
+	BaseURL             string         `gorm:"size:255;not null" json:"base_url"`
+	APIKey              string         `gorm:"size:255;default:''" json:"-"`
+	Weight              int            `gorm:"default:1" json:"weight"`
+	MaxConcurrency      int32          `gorm:"default:10" json:"max_concurrency"`
+	DeclaredProtocols   datatypes.JSON `gorm:"type:jsonb;default:'[\"chat\"]'" json:"declared_protocols"`
+	DetectedProtocols   datatypes.JSON `gorm:"type:jsonb;default:'[\"chat\"]'" json:"detected_protocols"`
+	IsHealthy           bool           `gorm:"default:true" json:"is_healthy"`
+	IsEnabled           bool           `gorm:"default:true" json:"is_enabled"`
+	LatencyMS           int64          `gorm:"default:0" json:"latency_ms"`
+	ConsecutiveFailures int            `gorm:"default:0" json:"consecutive_failures"`
+	LastCheckAt         *time.Time     `json:"last_check_at,omitempty"`
+	ActiveConnections   int32          `gorm:"-" json:"active_connections"` // 内存无锁并发计数器
+	CreatedAt           time.Time      `json:"created_at"`
+	UpdatedAt           time.Time      `json:"updated_at"`
+}
+
+// SystemSetting 全局系统配置键值持久化
+type SystemSetting struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Key       string    `gorm:"size:64;uniqueIndex;not null" json:"key"`
+	Value     string    `gorm:"type:text;not null" json:"value"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // SupportsProtocol 检查该物理后端是否支持指定的协议
@@ -187,3 +202,4 @@ type AccessLog struct {
 
 // User 声明引用公共用户结构
 type User = commonModels.User
+type Department = commonModels.Department
