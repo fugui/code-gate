@@ -4,6 +4,7 @@ export type { SubMenuItem, MenuGroup, ModuleMenuConfig }
 export const gateMenuConfig: ModuleMenuConfig = {
   moduleKey: 'gate',
   moduleName: 'AI 网关 (Code Gate)',
+  superAdminOnly: true,
   groups: [
     {
       title: '网关体验',
