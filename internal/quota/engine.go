@@ -58,8 +58,8 @@ func (e *Engine) CheckQuota(
 		return nil, nil, fmt.Errorf("加载用户配额失败: %w", err)
 	}
 
-	// 0. 管理员角色拥有全量模型权限，免除额度与频次限制
-	if quota.Role == models.RoleAdmin {
+	// 0. 管理员策略拥有全量模型权限，免除额度与频次限制
+	if quota.Policy != nil && quota.Policy.Name == "admin_policy" {
 		return quota, wallet, nil
 	}
 

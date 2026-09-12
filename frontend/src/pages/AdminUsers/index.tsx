@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, Edit3, UserCheck, ShieldCheck } from 'lucide-react'
+import { Search, Edit3, Shield } from 'lucide-react'
 import { Pagination, Drawer } from '@code/common'
-import { fetchAdminUsers, updateUserQuota } from '../../api/client'
-import { UserQuotaDTO } from '../../types'
+import { fetchAdminUsers, fetchAdminPolicies, updateUserQuota } from '../../api/client'
+import { UserQuotaDTO, QuotaPolicyItem } from '../../types'
 
 export const AdminUsersPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -16,9 +16,13 @@ export const AdminUsersPage: React.FC = () => {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
 
+  // 配额策略池选项
+  const [policies, setPolicies] = useState<QuotaPolicyItem[]>([])
+
   // 抽屉编辑状态
   const [editingUser, setEditingUser] = useState<UserQuotaDTO | null>(null)
-  const [selectedRole, setSelectedRole] = useState<string>('guest')
+  const [selectedPolicyId, setSelectedPolicyId] = useState<number | undefined>(undefined)
+  const [isCustomMode, setIsCustomMode] = useState<boolean>(false)
   const [customDaily, setCustomDaily] = useState<number>(100)
   const [customWeekly, setCustomWeekly] = useState<number>(400)
   const [submitting, setSubmitting] = useState(false)
@@ -36,9 +40,22 @@ export const AdminUsersPage: React.FC = () => {
     }
   }
 
+  const loadPolicies = async () => {
+    try {
+      const pData = await fetchAdminPolicies()
+      setPolicies(pData)
+    } catch (err: unknown) {
+      console.error(err)
+    }
+  }
+
   useEffect(() => {
     loadUsers()
   }, [page, pageSize, search])
+
+  useEffect(() => {
+    loadPolicies()
+  }, [])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -67,7 +84,8 @@ export const AdminUsersPage: React.FC = () => {
 
   const openEditDrawer = (user: UserQuotaDTO) => {
     setEditingUser(user)
-    setSelectedRole(user.role)
+    setSelectedPolicyId(user.policy_id)
+    setIsCustomMode(user.is_custom)
     const daily = user.custom_daily_credits ?? user.daily_limit
     const weekly = user.custom_weekly_credits ?? user.weekly_limit
     setCustomDaily(daily)
@@ -84,11 +102,11 @@ export const AdminUsersPage: React.FC = () => {
     if (!editingUser) return
     try {
       setSubmitting(true)
-      const isCustom = selectedRole === 'custom'
       await updateUserQuota(editingUser.user_id, {
-        role: selectedRole,
-        custom_daily_credits: isCustom ? customDaily : undefined,
-        custom_weekly_credits: isCustom ? customWeekly : undefined,
+        policy_id: selectedPolicyId,
+        is_custom: isCustomMode,
+        custom_daily_credits: isCustomMode ? customDaily : undefined,
+        custom_weekly_credits: isCustomMode ? customWeekly : undefined,
       })
       setEditingUser(null)
       loadUsers()
@@ -104,7 +122,7 @@ export const AdminUsersPage: React.FC = () => {
       <div>
         <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: '0 0 0.5rem 0' }}>CodeBench 用户配额台账管理</h2>
         <p style={{ color: 'var(--color-text-secondary)', margin: 0, fontSize: '0.9rem' }}>
-          共享 CodeBench 用户认证系统。新用户初次进入自动分配 guest 访客保底额度，管理员可随时提权或自定义日/周 4 倍联动算力配额。
+          共享 CodeBench 用户认证体系。所有用户直接关联配额策略池；管理员可随时按需调整配额策略或指定独立自定义限额。
         </p>
       </div>
 
@@ -152,8 +170,7 @@ export const AdminUsersPage: React.FC = () => {
                 <tr>
                   <th>用户 ID</th>
                   <th>用户名 / 姓名</th>
-                  <th>配额角色</th>
-                  <th>关联策略</th>
+                  <th>配额策略</th>
                   <th>日配额 / 已用</th>
                   <th>周配额 / 已用</th>
                   <th>操作</th>
@@ -168,21 +185,44 @@ export const AdminUsersPage: React.FC = () => {
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{u.name || u.email || '未填'}</div>
                     </td>
                     <td>
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          background: u.role === 'developer' ? 'var(--color-primary-subtle)' : u.role === 'custom' ? 'var(--color-warning-subtle)' : 'var(--color-bg-muted)',
-                          color: u.role === 'developer' ? 'var(--color-primary)' : u.role === 'custom' ? 'var(--color-warning)' : 'var(--color-text-secondary)',
-                          border: '1px solid var(--color-border-subtle)',
-                        }}
-                      >
-                        {u.role.toUpperCase()}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {u.policy_name === 'admin_policy' ? (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              background: 'var(--color-primary-subtle)',
+                              color: 'var(--color-primary)',
+                            }}
+                          >
+                            <Shield size={12} /> {u.policy_name}
+                          </span>
+                        ) : (
+                          <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                            {u.policy_name}
+                          </span>
+                        )}
+                        {u.is_custom && (
+                          <span
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              background: 'var(--color-warning-subtle)',
+                              color: 'var(--color-warning)',
+                              border: '1px solid var(--color-warning-border, rgba(245, 158, 11, 0.2))',
+                            }}
+                          >
+                            独立定制
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td style={{ color: 'var(--color-text-secondary)' }}>{u.policy_name}</td>
                     <td>
                       <span style={{ fontWeight: 600 }}>{u.daily_consumed.toFixed(1)}</span>
                       <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}> / {u.daily_limit.toFixed(1)}</span>
@@ -238,11 +278,18 @@ export const AdminUsersPage: React.FC = () => {
 
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem' }}>
-                目标配额角色
+                分配配额策略
               </label>
               <select
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
+                value={isCustomMode ? '__custom__' : (selectedPolicyId || '')}
+                onChange={(e) => {
+                  if (e.target.value === '__custom__') {
+                    setIsCustomMode(true)
+                  } else {
+                    setIsCustomMode(false)
+                    setSelectedPolicyId(Number(e.target.value))
+                  }
+                }}
                 style={{
                   width: '100%',
                   padding: '0.5rem 0.75rem',
@@ -252,15 +299,20 @@ export const AdminUsersPage: React.FC = () => {
                   color: 'var(--color-text-primary)',
                 }}
               >
-                <option value="guest">guest (保底体验策略: 日 100 / 周 400 Credits)</option>
-                <option value="developer">developer (开发者策略: 日 500 / 周 2000 Credits)</option>
-                <option value="vip">vip (VIP 策略: 日 2000 / 周 8000 Credits)</option>
-                <option value="custom">custom (独立定制 Credits 配额)</option>
+                {policies.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.description ? `${p.description}: ` : ''}日 {p.daily_credits_limit} / 周 {p.weekly_credits_limit} Credits, {p.rate_limit_rpm} RPM)
+                  </option>
+                ))}
+                <option value="__custom__">⚙️ 独立自定义配额 (手动指定日/周限额)</option>
               </select>
             </div>
 
-            {selectedRole === 'custom' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', border: '1px dashed var(--color-border-primary)', borderRadius: '6px' }}>
+            {isCustomMode && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', border: '1px dashed var(--color-border-primary)', borderRadius: '6px', backgroundColor: 'var(--color-bg-muted)' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--color-warning)' }}>
+                  提示：该用户将脱离所选策略的标准限额，直接按以下独立设定的日/周算力限额执行。
+                </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.3rem' }}>
                     自定义每日算力限额 (Credits)

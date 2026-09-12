@@ -60,7 +60,7 @@ func RequireAdmin() gin.HandlerFunc {
 
 		if !isAdmin {
 			if rawQuota, exists := c.Get(ContextUserQuota); exists {
-				if q, ok := rawQuota.(*models.GateUserQuota); ok && q != nil && q.Role == models.RoleAdmin {
+				if q, ok := rawQuota.(*models.GateUserQuota); ok && q != nil && q.Policy != nil && q.Policy.Name == "admin_policy" {
 					isAdmin = true
 				}
 			}
@@ -106,9 +106,9 @@ type UserQuotaDetailDTO struct {
 	Name                string   `json:"name"`
 	Email               string   `json:"email"`
 	Department          string   `json:"department"`
-	Role                string   `json:"role"` // CodeGate 配额角色: guest / developer / vip / admin
 	PolicyID            *uint    `json:"policy_id,omitempty"`
 	PolicyName          string   `json:"policy_name"`
+	IsCustom            bool     `json:"is_custom"`
 	DailyLimit          float64  `json:"daily_limit"`
 	WeeklyLimit         float64  `json:"weekly_limit"`
 	DailyConsumed       float64  `json:"daily_consumed"`
@@ -130,7 +130,7 @@ func HandleAdminListUsers(c *gin.Context) {
 	var quotas []models.GateUserQuota
 	query := db.Model(&models.GateUserQuota{}).Preload("Policy")
 	if search != "" {
-		query = query.Where("role ILIKE ? OR CAST(user_id AS TEXT) ILIKE ?", "%"+search+"%", "%"+search+"%")
+		query = query.Where("CAST(user_id AS TEXT) ILIKE ?", "%"+search+"%")
 	}
 	if err := query.Order("id desc").Limit(100).Find(&quotas).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户配额失败: " + err.Error()})
@@ -156,11 +156,14 @@ func HandleAdminListUsers(c *gin.Context) {
 			dailyLimit = q.Policy.DailyCreditsLimit
 			weeklyLimit = q.Policy.WeeklyCreditsLimit
 		}
+		isCustom := false
 		if q.CustomDailyCredits != nil && *q.CustomDailyCredits > 0 {
 			dailyLimit = *q.CustomDailyCredits
+			isCustom = true
 		}
 		if q.CustomWeeklyCredits != nil && *q.CustomWeeklyCredits > 0 {
 			weeklyLimit = *q.CustomWeeklyCredits
+			isCustom = true
 		}
 
 		uName := fmt.Sprintf("UID-%d", q.UserID)
@@ -189,9 +192,9 @@ func HandleAdminListUsers(c *gin.Context) {
 			Name:                uName,
 			Email:               uEmail,
 			Department:          uDept,
-			Role:                q.Role,
 			PolicyID:            q.PolicyID,
 			PolicyName:          policyName,
+			IsCustom:            isCustom,
 			DailyLimit:          dailyLimit,
 			WeeklyLimit:         weeklyLimit,
 			DailyConsumed:       wallet.DailyConsumed,
@@ -207,13 +210,13 @@ func HandleAdminListUsers(c *gin.Context) {
 
 // UpdateUserQuotaReq 更新用户配额请求体
 type UpdateUserQuotaReq struct {
-	Role                string   `json:"role"` // guest / developer / vip / admin
 	PolicyID            *uint    `json:"policy_id"`
+	IsCustom            bool     `json:"is_custom"`
 	CustomDailyCredits  *float64 `json:"custom_daily_credits"`
 	CustomWeeklyCredits *float64 `json:"custom_weekly_credits"`
 }
 
-// HandleAdminUpdateUserQuota 管理员调整用户配额与角色
+// HandleAdminUpdateUserQuota 管理员调整用户配额与策略
 func HandleAdminUpdateUserQuota(c *gin.Context) {
 	db := store.GetDB()
 	if db == nil {
@@ -240,23 +243,33 @@ func HandleAdminUpdateUserQuota(c *gin.Context) {
 		return
 	}
 
-	if req.Role != "" {
-		quota.Role = req.Role
-	}
+	updates := map[string]interface{}{}
 	if req.PolicyID != nil {
+		updates["policy_id"] = req.PolicyID
 		quota.PolicyID = req.PolicyID
 	}
-	quota.CustomDailyCredits = req.CustomDailyCredits
 
-	// 若仅指定日限额未指定周限额，自动按 4 倍联动
-	if req.CustomDailyCredits != nil && req.CustomWeeklyCredits == nil {
-		w := *req.CustomDailyCredits * 4.0
-		quota.CustomWeeklyCredits = &w
+	if req.IsCustom {
+		updates["custom_daily_credits"] = req.CustomDailyCredits
+		quota.CustomDailyCredits = req.CustomDailyCredits
+		// 若仅指定日限额未指定周限额，自动按 4 倍联动
+		if req.CustomDailyCredits != nil && req.CustomWeeklyCredits == nil {
+			w := *req.CustomDailyCredits * 4.0
+			updates["custom_weekly_credits"] = &w
+			quota.CustomWeeklyCredits = &w
+		} else {
+			updates["custom_weekly_credits"] = req.CustomWeeklyCredits
+			quota.CustomWeeklyCredits = req.CustomWeeklyCredits
+		}
 	} else {
-		quota.CustomWeeklyCredits = req.CustomWeeklyCredits
+		// 非自定义配额时，清空定制限额，完全继承策略配置
+		updates["custom_daily_credits"] = nil
+		updates["custom_weekly_credits"] = nil
+		quota.CustomDailyCredits = nil
+		quota.CustomWeeklyCredits = nil
 	}
 
-	if err := db.Save(quota).Error; err != nil {
+	if err := db.Model(&models.GateUserQuota{}).Where("id = ?", quota.ID).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存用户配额失败: " + err.Error()})
 		return
 	}

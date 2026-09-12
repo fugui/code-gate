@@ -28,13 +28,13 @@ func TestDualCycleQuotaEngine(t *testing.T) {
 	_ = db.Where("user_id = ?", testUserID).Delete(&models.GateUserQuota{})
 	_ = db.Where("user_id = ?", testUserID).Delete(&models.CreditsWallet{})
 
-	// 1. 初次请求：应自动绑定 guest 配额并放行
+	// 1. 初次请求：应自动绑定 guest_policy 配额并放行
 	quota, wallet, err := engine.CheckQuota(db, testUserID, "deepseek-v3")
 	if err != nil {
 		t.Fatalf("首次请求配额校验失败: %v", err)
 	}
-	if quota.Role != models.RoleGuest {
-		t.Errorf("首次访问用户角色不正确: 期望 guest, 获得 %s", quota.Role)
+	if quota.Policy == nil || quota.Policy.Name != "guest_policy" {
+		t.Errorf("首次访问用户配额策略不正确: 期望 guest_policy, 实际为 %+v", quota.Policy)
 	}
 
 	// 2. 模拟单日消耗达上限 (50 Credits)

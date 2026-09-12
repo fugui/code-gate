@@ -115,7 +115,7 @@ export async function fetchAdminUsers(page = 1, pageSize = 25, search = ''): Pro
 
 export async function updateUserQuota(
   userId: number,
-  payload: { role: string; policy_id?: number; custom_daily_credits?: number; custom_weekly_credits?: number }
+  payload: { policy_id?: number; is_custom?: boolean; custom_daily_credits?: number; custom_weekly_credits?: number }
 ): Promise<void> {
   await apiRequest(`${getBaseApiPrefix()}/admin/users/${userId}/quota`, {
     method: 'PUT',

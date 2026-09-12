@@ -88,7 +88,7 @@ export const Header: React.FC = () => {
 
       <div className="gate-header-actions">
         {profile && (
-          <div className="gate-quota-capsule" title={`角色: ${profile.role === 'admin' ? '超级管理员' : profile.role}\n日配额: ${profile.daily_used_credits.toFixed(1)} / ${profile.daily_limit_credits.toFixed(1)} Credits\n周配额: ${profile.weekly_used_credits.toFixed(1)} / ${profile.weekly_limit_credits.toFixed(1)} Credits`}>
+          <div className="gate-quota-capsule" title={`生效策略: ${profile.policy_name}${profile.is_custom ? ' (定制配额)' : ''}\n日配额: ${profile.daily_used_credits.toFixed(1)} / ${profile.daily_limit_credits.toFixed(1)} Credits\n周配额: ${profile.weekly_used_credits.toFixed(1)} / ${profile.weekly_limit_credits.toFixed(1)} Credits`}>
             {profile.is_admin ? (
               <span style={{ color: 'var(--color-primary)', fontWeight: 600, padding: '0 4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <Shield size={14} /> 管理员 (无限制)

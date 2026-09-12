@@ -18,8 +18,8 @@ import (
 // UserProfileResponse 用户个人网关资产与配额概览
 type UserProfileResponse struct {
 	UserID                 uint    `json:"user_id"`
-	Role                   string  `json:"role"`
 	PolicyName             string  `json:"policy_name"`
+	PolicyID               *uint   `json:"policy_id,omitempty"`
 	IsCustom               bool    `json:"is_custom"`
 	IsAdmin                bool    `json:"is_admin"`
 	RPMLimit               int     `json:"rpm_limit"`
@@ -84,7 +84,7 @@ func HandleGetUserProfile(c *gin.Context) {
 		return
 	}
 
-	if !isAdmin && userQuota.Role == models.RoleAdmin {
+	if !isAdmin && userQuota.Policy != nil && userQuota.Policy.Name == "admin_policy" {
 		isAdmin = true
 	}
 
@@ -121,8 +121,8 @@ func HandleGetUserProfile(c *gin.Context) {
 
 	resp := UserProfileResponse{
 		UserID:                 userID,
-		Role:                   userQuota.Role,
 		PolicyName:             policyName,
+		PolicyID:               userQuota.PolicyID,
 		IsCustom:               isCustom,
 		IsAdmin:                isAdmin,
 		RPMLimit:               rpmLimit,

@@ -94,13 +94,13 @@ export const KeysPage: React.FC = () => {
       {profile && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
           <div className="gate-card">
-            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>当前配额角色</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>当前配额策略</div>
             <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-primary)' }}>
-              {profile.role.toUpperCase()}
+              {profile.policy_name}
               {profile.is_custom && <span style={{ fontSize: '0.75rem', marginLeft: '0.5rem', padding: '2px 6px', background: 'var(--color-warning-subtle)', color: 'var(--color-warning)', borderRadius: '4px' }}>定制配额</span>}
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginTop: '0.4rem' }}>
-              策略: {profile.policy_name} (频控上限: {profile.rpm_limit} RPM)
+              频控上限: {profile.rpm_limit} RPM {profile.is_admin ? '(管理员无限制)' : ''}
             </div>
           </div>
 

@@ -12,20 +12,14 @@ import (
 
 // 常量定义
 const (
-	RoleGuest     = "guest"
-	RoleDeveloper = "developer"
-	RoleVIP       = "vip"
-	RoleAdmin     = "admin"
-
 	ProtocolChat      = "chat"
 	ProtocolResponses = "responses"
 )
 
-// GateUserQuota 用户在 CodeGate 内部的专属配额角色与限额映射
+// GateUserQuota 用户在 CodeGate 内部的专属配额策略与限额映射
 type GateUserQuota struct {
 	ID                  uint         `gorm:"primaryKey" json:"id"`
 	UserID              uint         `gorm:"uniqueIndex;not null" json:"user_id"` // 关联 CodeBench 统一用户 ID
-	Role                string       `gorm:"size:32;not null;default:'guest'" json:"role"`
 	PolicyID            *uint        `gorm:"index" json:"policy_id,omitempty"`
 	Policy              *QuotaPolicy `gorm:"foreignKey:PolicyID" json:"policy,omitempty"`
 	CustomDailyCredits  *float64     `json:"custom_daily_credits,omitempty"`

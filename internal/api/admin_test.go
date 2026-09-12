@@ -47,12 +47,18 @@ func TestAdminQuotaManagement(t *testing.T) {
 	}
 
 	// 1. 管理员调整用户配额：提权为 developer，指定日额度 120 (应自动设定周额度 480)
-	reqBody := []byte(`{
-		"role": "developer",
+	var devPolicy models.QuotaPolicy
+	if err := db.Where("name = ?", "developer_policy").First(&devPolicy).Error; err != nil {
+		t.Fatalf("查询 developer_policy 失败: %v", err)
+	}
+
+	reqBody := fmt.Sprintf(`{
+		"policy_id": %d,
+		"is_custom": true,
 		"custom_daily_credits": 120.0
-	}`)
+	}`, devPolicy.ID)
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodPut, "/admin/users/99999/quota", bytes.NewReader(reqBody))
+	req, _ := http.NewRequest(http.MethodPut, "/admin/users/99999/quota", bytes.NewReader([]byte(reqBody)))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 
@@ -66,8 +72,11 @@ func TestAdminQuotaManagement(t *testing.T) {
 		t.Fatalf("查询已更新的配额记录失败: %v", err)
 	}
 
-	if updatedQuota.Role != models.RoleDeveloper {
-		t.Errorf("配额角色期望 developer, 实际得到: %s", updatedQuota.Role)
+	if updatedQuota.PolicyID == nil {
+		t.Fatalf("配额策略 ID 为 nil")
+	}
+	if *updatedQuota.PolicyID != devPolicy.ID {
+		t.Errorf("配额策略 ID 期望 %d, 实际得到: %d", devPolicy.ID, *updatedQuota.PolicyID)
 	}
 	if updatedQuota.CustomDailyCredits == nil || *updatedQuota.CustomDailyCredits != 120.0 {
 		t.Errorf("自定义日配额期望 120.0, 实际得到: %v", updatedQuota.CustomDailyCredits)
@@ -203,8 +212,8 @@ func TestSuperAdminAutoGrantAndAccess(t *testing.T) {
 	if !profResp.Data.IsAdmin {
 		t.Errorf("超级管理员访问个人配额期望 is_admin 为 true, 实际为 false")
 	}
-	if profResp.Data.Role != models.RoleAdmin {
-		t.Errorf("超级管理员角色期望自动提升为 admin, 实际为 %s", profResp.Data.Role)
+	if profResp.Data.PolicyName != "admin_policy" {
+		t.Errorf("超级管理员配额策略期望自动关联 admin_policy, 实际为 %s", profResp.Data.PolicyName)
 	}
 
 	// 5. 超级管理员访问 /v1/admin/users 应成功返回 200
@@ -307,7 +316,6 @@ func TestAdminPolicySafetyDelete(t *testing.T) {
 	testUID := uint(88888)
 	quota := models.GateUserQuota{
 		UserID:   testUID,
-		Role:     models.RoleDeveloper,
 		PolicyID: &policy.ID,
 	}
 	_ = db.Create(&quota)

@@ -2,7 +2,7 @@
 
 export interface UserProfile {
   user_id: number
-  role: string
+  policy_id?: number
   policy_name: string
   is_custom: boolean
   is_admin?: boolean
@@ -95,9 +95,9 @@ export interface UserQuotaDTO {
   name: string
   email: string
   department?: string
-  role: string
   policy_id?: number
   policy_name: string
+  is_custom: boolean
   daily_limit: number
   weekly_limit: number
   daily_consumed: number

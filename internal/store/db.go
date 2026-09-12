@@ -61,6 +61,12 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("数据表自动迁移失败: %w", err)
 	}
 
+	// 彻底清理历史冗余：物理删除 gate_user_quotas 表中的 role 字段
+	if db.Migrator().HasColumn(&models.GateUserQuota{}, "role") {
+		log.Printf("[CodeGate] 检测到历史冗余列 role，正在执行物理删除清理...")
+		_ = db.Migrator().DropColumn(&models.GateUserQuota{}, "role")
+	}
+
 	// 初始化默认种子数据
 	seedDefaults(db, cfg)
 
@@ -183,7 +189,7 @@ func InitOrGetUserQuota(db *gorm.DB, userID uint) (*models.GateUserQuota, *model
 	err := db.Preload("Policy").Where("user_id = ?", userID).First(&quota).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			// 首次访问：自动绑定 guest 角色
+			// 首次访问：自动绑定 guest_policy
 			var guestPolicy models.QuotaPolicy
 			var policyID *uint
 			if pErr := db.Where("name = ?", "guest_policy").First(&guestPolicy).Error; pErr == nil {
@@ -192,7 +198,6 @@ func InitOrGetUserQuota(db *gorm.DB, userID uint) (*models.GateUserQuota, *model
 
 			quota = models.GateUserQuota{
 				UserID:   userID,
-				Role:     models.RoleGuest,
 				PolicyID: policyID,
 			}
 			if createErr := db.Create(&quota).Error; createErr != nil {
@@ -230,7 +235,7 @@ func InitOrGetUserQuota(db *gorm.DB, userID uint) (*models.GateUserQuota, *model
 	return &quota, &wallet, nil
 }
 
-// EnsureAdminQuota 确保平台超级管理员具备 CodeGate 的 admin 角色与专属充沛配额策略
+// EnsureAdminQuota 确保平台超级管理员关联专属充沛配额策略 admin_policy
 func EnsureAdminQuota(db *gorm.DB, userID uint) (*models.GateUserQuota, error) {
 	var adminPolicy models.QuotaPolicy
 	var policyID *uint
@@ -244,7 +249,6 @@ func EnsureAdminQuota(db *gorm.DB, userID uint) (*models.GateUserQuota, error) {
 		if err == gorm.ErrRecordNotFound {
 			quota = models.GateUserQuota{
 				UserID:   userID,
-				Role:     models.RoleAdmin,
 				PolicyID: policyID,
 			}
 			if cErr := db.Create(&quota).Error; cErr != nil {
@@ -258,19 +262,13 @@ func EnsureAdminQuota(db *gorm.DB, userID uint) (*models.GateUserQuota, error) {
 		return nil, err
 	}
 
-	// 若已存在但角色非 admin，自动同步升级为 admin 角色并关联 admin_policy
-	if quota.Role != models.RoleAdmin {
-		quota.Role = models.RoleAdmin
+	// 若未关联 admin_policy，自动同步关联 admin_policy
+	if policyID != nil && (quota.PolicyID == nil || *quota.PolicyID != *policyID) {
 		quota.PolicyID = policyID
-		if sErr := db.Model(&quota).Updates(map[string]interface{}{
-			"role":      models.RoleAdmin,
-			"policy_id": policyID,
-		}).Error; sErr != nil {
-			log.Printf("[CodeGate] 自动同步升级管理员角色失败: %v", sErr)
+		if sErr := db.Model(&quota).Update("policy_id", policyID).Error; sErr != nil {
+			log.Printf("[CodeGate] 自动同步关联管理员配额策略失败: %v", sErr)
 		}
-		if policyID != nil {
-			quota.Policy = &adminPolicy
-		}
+		quota.Policy = &adminPolicy
 	}
 	return &quota, nil
 }
