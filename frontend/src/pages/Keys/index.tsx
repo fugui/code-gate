@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, Trash2, Copy, Check, Key, ShieldAlert } from 'lucide-react'
+import { Plus, Trash2, Copy, Check, Key, Eye, EyeOff } from 'lucide-react'
 import { fetchUserProfile, fetchUserKeys, createAPIKey, deleteAPIKey } from '../../api/client'
 import { UserProfile, APIKeyItem } from '../../types'
 
@@ -8,10 +8,14 @@ export const KeysPage: React.FC = () => {
   const [keys, setKeys] = useState<APIKeyItem[]>([])
   const [loading, setLoading] = useState(true)
 
+  // API Key 列表明文展示与复制状态
+  const [visibleKeyIds, setVisibleKeyIds] = useState<Record<number, boolean>>({})
+  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null)
+
   // 新建 API Key 弹窗
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [keyName, setKeyName] = useState('')
-  const [expiresIn, setExpiresIn] = useState(30)
+  const [expiresIn, setExpiresIn] = useState(0) // 默认永不过期
   const [createdSecret, setCreatedSecret] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -65,6 +69,16 @@ export const KeysPage: React.FC = () => {
     navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const toggleVisible = (id: number) => {
+    setVisibleKeyIds((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const handleCopyKey = (text: string, id: number) => {
+    navigator.clipboard.writeText(text)
+    setCopiedKeyId(id)
+    setTimeout(() => setCopiedKeyId(null), 2000)
   }
 
   return (
@@ -124,6 +138,7 @@ export const KeysPage: React.FC = () => {
             className="btn btn-primary"
             onClick={() => {
               setKeyName('')
+              setExpiresIn(0)
               setCreatedSecret(null)
               setIsCreateOpen(true)
             }}
@@ -146,7 +161,7 @@ export const KeysPage: React.FC = () => {
               <thead>
                 <tr>
                   <th>名称</th>
-                  <th>Key 前缀</th>
+                  <th>API Key 凭证</th>
                   <th>状态</th>
                   <th>创建时间</th>
                   <th>过期时间</th>
@@ -158,9 +173,53 @@ export const KeysPage: React.FC = () => {
                   <tr key={k.id}>
                     <td style={{ fontWeight: 600 }}>{k.name}</td>
                     <td>
-                      <code style={{ background: 'var(--color-bg-muted)', padding: '2px 6px', borderRadius: '4px' }}>
-                        {k.key_prefix}
-                      </code>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <code
+                          style={{
+                            background: 'var(--color-bg-muted)',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontFamily: 'monospace',
+                            fontSize: '0.85rem',
+                          }}
+                        >
+                          {k.raw_key
+                            ? visibleKeyIds[k.id]
+                              ? k.raw_key
+                              : `${k.raw_key.slice(0, 12)}...${k.raw_key.slice(-8)}`
+                            : k.key_prefix}
+                        </code>
+                        {k.raw_key && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => toggleVisible(k.id)}
+                            title={visibleKeyIds[k.id] ? '隐藏完整密钥' : '显示完整密钥'}
+                            style={{ padding: '3px 6px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center' }}
+                          >
+                            {visibleKeyIds[k.id] ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => handleCopyKey(k.raw_key || k.key_prefix, k.id)}
+                          title="复制 API Key"
+                          style={{ padding: '3px 8px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                        >
+                          {copiedKeyId === k.id ? (
+                            <>
+                              <Check size={13} color="var(--color-success)" />
+                              <span style={{ color: 'var(--color-success)', fontSize: '0.75rem' }}>已复制</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={13} />
+                              <span>复制</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </td>
                     <td>
                       <span
@@ -239,16 +298,16 @@ export const KeysPage: React.FC = () => {
                     alignItems: 'center',
                     gap: '0.5rem',
                     padding: '0.75rem',
-                    backgroundColor: 'var(--color-warning-subtle)',
-                    border: '1px solid var(--color-warning-border)',
+                    backgroundColor: 'var(--color-success-subtle)',
+                    border: '1px solid var(--color-success)',
                     borderRadius: '6px',
-                    color: 'var(--color-warning)',
+                    color: 'var(--color-success)',
                     fontSize: '0.85rem',
                     marginBottom: '1rem',
                   }}
                 >
-                  <ShieldAlert size={20} />
-                  <span>请妥善复制并保管该 API Key！出于安全机制，密钥明文仅在此展示一次，后续无法再次查阅。</span>
+                  <Key size={18} />
+                  <span>API Key 创建成功！您可直接复制使用，后续也可随时在列表中查看完整密钥或直接复制。</span>
                 </div>
 
                 <div
@@ -325,10 +384,10 @@ export const KeysPage: React.FC = () => {
                       color: 'var(--color-text-primary)',
                     }}
                   >
+                    <option value={0}>永不过期（默认）</option>
                     <option value={7}>7 天</option>
                     <option value={30}>30 天</option>
                     <option value={90}>90 天</option>
-                    <option value={0}>永不过期</option>
                   </select>
                 </div>
 

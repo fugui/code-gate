@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -236,5 +238,109 @@ func TestUnifiedAuthMiddlewareWithSharedJWT(t *testing.T) {
 
 	if wValid.Code != http.StatusOK {
 		t.Errorf("使用统一共享密钥的 JWT 期望返回 200, 实际获得: %d, body: %s", wValid.Code, wValid.Body.String())
+	}
+}
+
+func TestUserAPIKeyLifecycleWithRawKeyAndNeverExpire(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg, err := config.Load("../../config.yaml.example")
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+
+	db, err := store.InitDB(cfg)
+	if err != nil {
+		t.Skipf("无法连接数据库，跳过集成测试: %v", err)
+		return
+	}
+
+	testUserID := uint(8888)
+	// 清理旧测试数据
+	db.Where("user_id = ?", testUserID).Delete(&models.APIKey{})
+
+	r := gin.New()
+	v1 := r.Group("/v1")
+	v1.Use(func(c *gin.Context) {
+		c.Set(ContextUserID, testUserID)
+		c.Next()
+	})
+	v1.POST("/user/keys", HandleCreateUserKey)
+	v1.GET("/user/keys", HandleListUserKeys)
+
+	// 1. 创建 API Key，未指定 expires_in（即 0，默认永不过期）
+	bodyData := []byte(`{"name":"测试永久密钥","expires_in":0}`)
+	wCreate := httptest.NewRecorder()
+	reqCreate, _ := http.NewRequest(http.MethodPost, "/v1/user/keys", bytes.NewBuffer(bodyData))
+	reqCreate.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(wCreate, reqCreate)
+
+	if wCreate.Code != http.StatusOK {
+		t.Fatalf("创建 API Key 期望 200, 实际获得: %d, body: %s", wCreate.Code, wCreate.Body.String())
+	}
+
+	var createResp struct {
+		Data struct {
+			ID        uint    `json:"id"`
+			Name      string  `json:"name"`
+			RawKey    string  `json:"raw_key"`
+			ExpiresAt *string `json:"expires_at"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(wCreate.Body.Bytes(), &createResp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if createResp.Data.RawKey == "" || !strings.HasPrefix(createResp.Data.RawKey, "sk-gate-") {
+		t.Errorf("RawKey 格式不正确: %s", createResp.Data.RawKey)
+	}
+	if createResp.Data.ExpiresAt != nil {
+		t.Errorf("ExpiresAt 期望为 null (永不过期), 实际为: %v", *createResp.Data.ExpiresAt)
+	}
+
+	// 2. 查库验证 RawKey 是否已持久化
+	var savedKey models.APIKey
+	if err := db.First(&savedKey, createResp.Data.ID).Error; err != nil {
+		t.Fatalf("查询已保存的 APIKey 失败: %v", err)
+	}
+	if savedKey.RawKey != createResp.Data.RawKey {
+		t.Errorf("数据库持久化 RawKey 期望 %s, 实际 %s", createResp.Data.RawKey, savedKey.RawKey)
+	}
+	if savedKey.ExpiresAt != nil {
+		t.Errorf("数据库持久化 ExpiresAt 期望 nil, 实际 %v", savedKey.ExpiresAt)
+	}
+
+	// 3. 调用列表接口，验证是否返回 raw_key 且支持查看与复制
+	wList := httptest.NewRecorder()
+	reqList, _ := http.NewRequest(http.MethodGet, "/v1/user/keys", nil)
+	r.ServeHTTP(wList, reqList)
+
+	if wList.Code != http.StatusOK {
+		t.Fatalf("获取 API Key 列表期望 200, 实际获得: %d", wList.Code)
+	}
+
+	var listResp struct {
+		Data []models.APIKey `json:"data"`
+	}
+	if err := json.Unmarshal(wList.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("解析列表响应失败: %v", err)
+	}
+	if len(listResp.Data) == 0 {
+		t.Fatalf("列表期望返回至少 1 条记录")
+	}
+	found := false
+	for _, k := range listResp.Data {
+		if k.ID == createResp.Data.ID {
+			found = true
+			if k.RawKey != createResp.Data.RawKey {
+				t.Errorf("列表返回 RawKey 期望 %s, 实际 %s", createResp.Data.RawKey, k.RawKey)
+			}
+			if k.ExpiresAt != nil {
+				t.Errorf("列表返回 ExpiresAt 期望 nil, 实际 %v", k.ExpiresAt)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("列表中未找到新建的 API Key")
 	}
 }

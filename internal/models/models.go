@@ -170,6 +170,7 @@ type APIKey struct {
 	ID            uint           `gorm:"primaryKey" json:"id"`
 	UserID        uint           `gorm:"index;not null" json:"user_id"`
 	Name          string         `gorm:"size:64;not null" json:"name"`
+	RawKey        string         `gorm:"size:128;default:''" json:"raw_key"` // 存储完整明文 Key，便于用户随时查看与复制
 	KeyHash       string         `gorm:"size:128;uniqueIndex;not null" json:"-"`
 	KeyPrefix     string         `gorm:"size:16;not null" json:"key_prefix"` // 便于前端展示如 sk-abc...
 	AllowedModels datatypes.JSON `gorm:"type:jsonb;default:'[\"*\"]'" json:"allowed_models"`

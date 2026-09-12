@@ -217,6 +217,7 @@ func HandleCreateUserKey(c *gin.Context) {
 	apiKey := models.APIKey{
 		UserID:        userID,
 		Name:          req.Name,
+		RawKey:        rawKey,
 		KeyHash:       keyHash,
 		KeyPrefix:     keyPrefix,
 		AllowedModels: datatypes.JSON([]byte(`["*"]`)),
@@ -231,7 +232,7 @@ func HandleCreateUserKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "API Key 创建成功，请妥善保存（明文仅展示一次）",
+		"message": "API Key 创建成功",
 		"data": gin.H{
 			"id":         apiKey.ID,
 			"name":       apiKey.Name,
