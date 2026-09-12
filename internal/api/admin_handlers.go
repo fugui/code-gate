@@ -517,13 +517,28 @@ func HandleAdminSaveModel(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "模型不存在"})
 			return
 		}
-		if req.Description != "" {
-			m.Description = req.Description
+
+		newName := strings.TrimSpace(req.Name)
+		if newName != "" && newName != m.Name {
+			var count int64
+			db.Model(&models.Model{}).Where("name = ? AND id != ?", newName, m.ID).Count(&count)
+			if count > 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("模型标识 %s 已被其他模型占用", newName)})
+				return
+			}
+			oldName := m.Name
+			m.Name = newName
+			// 级联更新其他模型引用的保底降级模型名称
+			_ = db.Model(&models.Model{}).Where("default_model = ?", oldName).Update("default_model", newName).Error
+			// 级联更新配额策略引用的默认模型名称
+			_ = db.Model(&models.QuotaPolicy{}).Where("default_model = ?", oldName).Update("default_model", newName).Error
 		}
+
+		m.Description = strings.TrimSpace(req.Description)
 		if req.Multiplier > 0 {
 			m.Multiplier = req.Multiplier
 		}
-		m.DefaultModel = req.DefaultModel
+		m.DefaultModel = strings.TrimSpace(req.DefaultModel)
 		if len(req.ModelParams) > 0 {
 			m.ModelParams = req.ModelParams
 		}

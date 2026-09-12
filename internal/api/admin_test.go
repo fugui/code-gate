@@ -385,7 +385,28 @@ func TestAdminModelAndBackendLifecycle(t *testing.T) {
 	}
 	defer db.Delete(&m.Backends[0])
 
-	// 2. 切换模型状态
+	// 2. 更新模型（包含修改模型标识 Name 与倍率）
+	updateReq := fmt.Sprintf(`{"id":%d,"name":"test-auto-model-renamed","description":"更新说明","multiplier":3.0}`, m.ID)
+	wUpdate := httptest.NewRecorder()
+	reqUpdate, _ := http.NewRequest(http.MethodPost, "/admin/models", bytes.NewReader([]byte(updateReq)))
+	reqUpdate.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(wUpdate, reqUpdate)
+	if wUpdate.Code != http.StatusOK {
+		t.Fatalf("更新模型失败: %d, body: %s", wUpdate.Code, wUpdate.Body.String())
+	}
+
+	var mRenamed models.Model
+	if err := db.First(&mRenamed, m.ID).Error; err != nil {
+		t.Fatalf("查询重命名后模型失败: %v", err)
+	}
+	if mRenamed.Name != "test-auto-model-renamed" {
+		t.Errorf("期望模型标识更新为 test-auto-model-renamed, 实际为: %s", mRenamed.Name)
+	}
+	if mRenamed.Multiplier != 3.0 {
+		t.Errorf("期望 multiplier 更新为 3.0, 实际为: %v", mRenamed.Multiplier)
+	}
+
+	// 3. 切换模型状态
 	wToggle := httptest.NewRecorder()
 	reqToggle, _ := http.NewRequest(http.MethodPatch, fmt.Sprintf("/admin/models/%d/toggle", m.ID), nil)
 	r.ServeHTTP(wToggle, reqToggle)

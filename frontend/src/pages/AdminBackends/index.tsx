@@ -603,11 +603,10 @@ export const AdminBackendsPage: React.FC = () => {
               value={modelForm.name}
               onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })}
               placeholder="例如: deepseek-v3, claude-3-7-sonnet"
-              disabled={!!editingModel}
               required
             />
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-              客户端通过 `/v1/chat/completions` 请求时指定的模型名称
+              客户端通过 `/v1/chat/completions` 请求时指定的模型名称{editingModel ? '（修改后客户端请求需使用新标识）' : ''}
             </span>
           </div>
 
