@@ -73,9 +73,10 @@ func main() {
 	// 4. 启动审计日志定时轮转清理协程
 	cleanupStopChan := audit.StartLogCleanupTask(store.GetDB(), 7, 24*time.Hour)
 
-	// 5. 注入运行时配置快照与初始化动态安全过滤器
+	// 5. 注入运行时配置快照与初始化动态安全过滤器及全局时段倍率
 	api.SetRuntimeServerConfig(cfg.Server.ReadTimeout.String(), cfg.Server.WriteTimeout.String(), cfg.Server.IdleTimeout.String(), cfg.Server.MaxHeaderBytes)
 	dynamicFilter := api.GetGlobalClientFilter(store.GetBlockedUserAgents(store.GetDB(), cfg.Security.BlockedUserAgents))
+	quota.GetGlobalMultiplierManager().SetRules(store.GetTimeMultiplierRules(store.GetDB()))
 
 	// 6. 基于 code-common/backend/server 脚手架启动微服务
 	servicePrefix := cfg.Server.Prefix
@@ -121,6 +122,7 @@ func main() {
 				})
 			})
 			r.GET("/v1/models", api.HandleListModels)
+			r.GET("/v1/current-multiplier", api.HandleGetCurrentMultiplier)
 
 			// 统一鉴权与核心受保护网关路由
 			v1Group := r.Group("/v1")
@@ -177,6 +179,10 @@ func main() {
 					// 系统运行时配置与动态客户端安全过滤
 					adminGroup.GET("/config/system", api.HandleAdminGetSystemConfig)
 					adminGroup.PUT("/config/system", api.HandleAdminUpdateSystemConfig)
+
+					// 全局时段算力倍率排期治理
+					adminGroup.GET("/time-multipliers", api.HandleAdminGetTimeMultipliers)
+					adminGroup.PUT("/time-multipliers", api.HandleAdminUpdateTimeMultipliers)
 
 					// 7 天 TOP 算力消费者交叉透视矩阵大账
 					adminGroup.GET("/top-consumers", api.HandleAdminGetTopConsumers)

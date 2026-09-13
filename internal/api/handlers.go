@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"code-gate/internal/config"
@@ -199,6 +200,9 @@ func handleProxyRequest(
 	}
 	defer selectedBackend.ReleaseSlot()
 
+	timeMult, _ := quota.GetGlobalTimeMultiplier(time.Now())
+	c.Header("X-CodeGate-Time-Multiplier", strconv.FormatFloat(timeMult, 'f', 2, 64))
+
 	// 5. 代理转发
 	var result *proxy.ProxyResult
 	var forwardErr error
@@ -241,7 +245,8 @@ func recordAuditAndDeductCredits(
 		}
 	}
 
-	credits := proxy.CalculateCredits(result.Usage, model.Multiplier)
+	timeMult, _ := quota.GetGlobalTimeMultiplier(time.Now())
+	credits := proxy.CalculateCredits(result.Usage, model.Multiplier*timeMult)
 
 	errMsg := ""
 	if forwardErr != nil {

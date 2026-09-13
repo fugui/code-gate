@@ -12,6 +12,7 @@ import (
 
 	"code-common/backend/auth"
 	"code-gate/internal/models"
+	"code-gate/internal/quota"
 	"code-gate/internal/routing"
 	"code-gate/internal/store"
 	"github.com/gin-gonic/gin"
@@ -1066,6 +1067,100 @@ func HandleAdminUpdateSystemConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "客户端安全过滤规则已热更新，即刻生效",
 		"data":    req.BlockedUserAgents,
+	})
+}
+
+// TimeMultipliersResponse 全局时段算力倍率接口返回结构
+type TimeMultipliersResponse struct {
+	CurrentMultiplier float64                    `json:"current_multiplier"`
+	MatchedRule       *models.TimeMultiplierRule `json:"matched_rule,omitempty"`
+	Rules             []models.TimeMultiplierRule `json:"rules"`
+}
+
+// HandleAdminGetTimeMultipliers 获取所有全局时段算力倍率规则及当前生效状态
+func HandleAdminGetTimeMultipliers(c *gin.Context) {
+	db := store.GetDB()
+	var rules []models.TimeMultiplierRule
+	if db != nil {
+		rules = store.GetTimeMultiplierRules(db)
+	} else {
+		rules = quota.GetGlobalMultiplierManager().GetRules()
+	}
+
+	curMult, matchedRule := quota.GetGlobalTimeMultiplier(time.Now())
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": TimeMultipliersResponse{
+			CurrentMultiplier: curMult,
+			MatchedRule:       matchedRule,
+			Rules:             rules,
+		},
+	})
+}
+
+// UpdateTimeMultipliersReq 更新全局倍率规则请求体
+type UpdateTimeMultipliersReq struct {
+	Rules []models.TimeMultiplierRule `json:"rules"`
+}
+
+// HandleAdminUpdateTimeMultipliers 批量保存并热生效全局时段倍率排期规则
+func HandleAdminUpdateTimeMultipliers(c *gin.Context) {
+	db := store.GetDB()
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "数据库未连接"})
+		return
+	}
+
+	var req UpdateTimeMultipliersReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数格式错误: " + err.Error()})
+		return
+	}
+
+	// 规则校验
+	for i, r := range req.Rules {
+		if strings.TrimSpace(r.Name) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("第 %d 条规则名称不能为空", i+1)})
+			return
+		}
+		if r.Multiplier <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("规则 [%s] 的倍率必须大于 0", r.Name)})
+			return
+		}
+		if r.ID == "" {
+			req.Rules[i].ID = fmt.Sprintf("rule-%d", time.Now().UnixNano()+int64(i))
+		}
+	}
+
+	// 1. 持久化到 DB
+	if err := store.SaveTimeMultiplierRules(db, req.Rules); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存规则失败: " + err.Error()})
+		return
+	}
+
+	// 2. 热重载内存管理器
+	quota.GetGlobalMultiplierManager().SetRules(req.Rules)
+
+	curMult, matchedRule := quota.GetGlobalTimeMultiplier(time.Now())
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "全局时段算力倍率已热重载生效",
+		"data": TimeMultipliersResponse{
+			CurrentMultiplier: curMult,
+			MatchedRule:       matchedRule,
+			Rules:             req.Rules,
+		},
+	})
+}
+
+// HandleGetCurrentMultiplier 供前台用户或只读端获取当前全局倍率状态
+func HandleGetCurrentMultiplier(c *gin.Context) {
+	curMult, matchedRule := quota.GetGlobalTimeMultiplier(time.Now())
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"current_multiplier": curMult,
+			"matched_rule":       matchedRule,
+		},
 	})
 }
 

@@ -98,6 +98,18 @@ type SystemSetting struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// TimeMultiplierRule 全局时段算力倍率规则
+type TimeMultiplierRule struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	DaysOfWeek  []int   `json:"days_of_week"` // 1=周一, 2=周二, ..., 7=周日；若为空表示每天
+	StartTime   string  `json:"start_time"`   // 起始时间 "21:00" (HH:MM)
+	EndTime     string  `json:"end_time"`     // 结束时间 "09:00" (HH:MM)，若 StartTime > EndTime 则表示跨午夜
+	Multiplier  float64 `json:"multiplier"`   // 算力倍率，如 0.2, 1.5
+	IsEnabled   bool    `json:"is_enabled"`   // 是否启用
+	Description string  `json:"description,omitempty"`
+}
+
 // SupportsProtocol 检查该物理后端是否支持指定的协议
 func (b *Backend) SupportsProtocol(proto string) bool {
 	checkJSON := func(dj datatypes.JSON) bool {

@@ -145,6 +145,90 @@ func seedDefaults(db *gorm.DB, cfg *config.Config) {
 		}
 		_ = db.Create(&setting).Error
 	}
+
+	// 5. 初始化全局时段算力倍率规则
+	var multiplierSetting models.SystemSetting
+	if err := db.Where("key = ?", "billing.time_multipliers").First(&multiplierSetting).Error; err != nil {
+		defaultRules := DefaultTimeMultiplierRules()
+		valBytes, _ := json.Marshal(defaultRules)
+		multiplierSetting = models.SystemSetting{
+			Key:   "billing.time_multipliers",
+			Value: string(valBytes),
+		}
+		_ = db.Create(&multiplierSetting).Error
+	}
+}
+
+// DefaultTimeMultiplierRules 返回开箱即用的默认时段倍率排期规则
+func DefaultTimeMultiplierRules() []models.TimeMultiplierRule {
+	return []models.TimeMultiplierRule{
+		{
+			ID:          "rule-night-discount",
+			Name:        "夜间空闲特惠 (0.2x)",
+			DaysOfWeek:  []int{1, 2, 3, 4, 5, 6, 7}, // 每天
+			StartTime:   "21:00",
+			EndTime:     "09:00",
+			Multiplier:  0.2,
+			IsEnabled:   true,
+			Description: "鼓励夜间利用闲置算力，全量模型享受 2 折计费 (跨午夜)",
+		},
+		{
+			ID:          "rule-workday-peak-morning",
+			Name:        "工作日早高峰加成 (1.5x)",
+			DaysOfWeek:  []int{1, 2, 3, 4, 5}, // 周一至周五
+			StartTime:   "10:00",
+			EndTime:     "12:00",
+			Multiplier:  1.5,
+			IsEnabled:   true,
+			Description: "工作日上午核心繁忙期算力上浮 50%",
+		},
+		{
+			ID:          "rule-workday-peak-afternoon",
+			Name:        "工作日午后高峰加成 (1.5x)",
+			DaysOfWeek:  []int{1, 2, 3, 4, 5}, // 周一至周五
+			StartTime:   "15:00",
+			EndTime:     "16:00",
+			Multiplier:  1.5,
+			IsEnabled:   true,
+			Description: "工作日下午核心繁忙期算力上浮 50%",
+		},
+	}
+}
+
+// GetTimeMultiplierRules 获取当前保存的全局时段倍率排期规则
+func GetTimeMultiplierRules(db *gorm.DB) []models.TimeMultiplierRule {
+	if db == nil {
+		return DefaultTimeMultiplierRules()
+	}
+	var setting models.SystemSetting
+	if err := db.Where("key = ?", "billing.time_multipliers").First(&setting).Error; err == nil && setting.Value != "" {
+		var list []models.TimeMultiplierRule
+		if err := json.Unmarshal([]byte(setting.Value), &list); err == nil && len(list) > 0 {
+			return list
+		}
+	}
+	return DefaultTimeMultiplierRules()
+}
+
+// SaveTimeMultiplierRules 保存全局时段倍率排期规则
+func SaveTimeMultiplierRules(db *gorm.DB, rules []models.TimeMultiplierRule) error {
+	if db == nil {
+		return fmt.Errorf("数据库连接不可用")
+	}
+	valBytes, err := json.Marshal(rules)
+	if err != nil {
+		return err
+	}
+	var setting models.SystemSetting
+	if err := db.Where("key = ?", "billing.time_multipliers").First(&setting).Error; err == nil {
+		setting.Value = string(valBytes)
+		return db.Save(&setting).Error
+	}
+	setting = models.SystemSetting{
+		Key:   "billing.time_multipliers",
+		Value: string(valBytes),
+	}
+	return db.Create(&setting).Error
 }
 
 // GetBlockedUserAgents 获取当前保存的黑名单 UA，若不存在则回退至 fallback

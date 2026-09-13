@@ -253,3 +253,21 @@ export interface TopConsumersData {
   users: UserTopConsumerRow[]
   grand_total: GrandTotalRow
 }
+
+// 7. 全局时段算力倍率
+export interface TimeMultiplierRule {
+  id: string
+  name: string
+  days_of_week?: number[] // 1=周一, ..., 7=周日；若空表示每天
+  start_time: string // "21:00"
+  end_time: string // "09:00"
+  multiplier: number // 0.2
+  is_enabled: boolean
+  description?: string
+}
+
+export interface TimeMultipliersData {
+  current_multiplier: number
+  matched_rule?: TimeMultiplierRule | null
+  rules: TimeMultiplierRule[]
+}

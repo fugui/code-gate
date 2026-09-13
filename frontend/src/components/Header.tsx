@@ -1,20 +1,30 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Shield, MessageSquare, Key, Users, Server, FileText, Sun, Moon, BarChart3 } from 'lucide-react'
+import { Shield, MessageSquare, Key, Users, Server, FileText, Sun, Moon, BarChart3, Zap } from 'lucide-react'
 import { useTheme } from '@code/common'
-import { fetchUserProfile } from '../api/client'
-import { UserProfile } from '../types'
+import { fetchUserProfile, fetchCurrentMultiplier } from '../api/client'
+import { UserProfile, TimeMultiplierRule } from '../types'
 
 export const Header: React.FC = () => {
   const location = useLocation()
   const { theme, toggleTheme } = useTheme()
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [multiplierInfo, setMultiplierInfo] = useState<{
+    current_multiplier: number
+    matched_rule?: TimeMultiplierRule | null
+  } | null>(null)
 
   useEffect(() => {
     fetchUserProfile()
       .then(setProfile)
       .catch(() => {
         // 忽略未登录或未连接状态
+      })
+
+    fetchCurrentMultiplier()
+      .then(setMultiplierInfo)
+      .catch(() => {
+        // 忽略未就绪状态
       })
   }, [location.pathname])
 
@@ -115,6 +125,53 @@ export const Header: React.FC = () => {
                 </div>
                 <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{weeklyPercent}%</span>
               </>
+            )}
+          </div>
+        )}
+
+        {/* 全局时段算力倍率徽章 */}
+        {multiplierInfo && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              padding: '0.3rem 0.65rem',
+              borderRadius: '9999px',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: multiplierInfo.current_multiplier < 1.0
+                ? 'rgba(16, 185, 129, 0.12)'
+                : multiplierInfo.current_multiplier > 1.0
+                ? 'rgba(245, 158, 11, 0.12)'
+                : 'var(--color-bg-muted)',
+              color: multiplierInfo.current_multiplier < 1.0
+                ? 'var(--color-success)'
+                : multiplierInfo.current_multiplier > 1.0
+                ? 'var(--color-warning)'
+                : 'var(--color-text-secondary)',
+              border: `1px solid ${
+                multiplierInfo.current_multiplier < 1.0
+                  ? 'var(--color-success)'
+                  : multiplierInfo.current_multiplier > 1.0
+                  ? 'var(--color-warning)'
+                  : 'var(--color-border-subtle)'
+              }`,
+            }}
+            title={
+              multiplierInfo.matched_rule
+                ? `当前生效算力倍率: ${multiplierInfo.current_multiplier}x\n命中规则: [${multiplierInfo.matched_rule.name}] (${multiplierInfo.matched_rule.start_time}-${multiplierInfo.matched_rule.end_time})\n${multiplierInfo.matched_rule.description || ''}`
+                : `当前生效算力倍率: 1.00x (基准费率)`
+            }
+          >
+            <Zap size={14} />
+            <span>{multiplierInfo.current_multiplier.toFixed(2)}x</span>
+            {multiplierInfo.current_multiplier < 1.0 && (
+              <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>闲时优惠</span>
+            )}
+            {multiplierInfo.current_multiplier > 1.0 && (
+              <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>高峰</span>
             )}
           </div>
         )}

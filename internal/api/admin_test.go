@@ -485,3 +485,65 @@ func TestAdminSystemConfigAndHotReload(t *testing.T) {
 		t.Errorf("期望热重载后能够阻断 Test-Blocked-Bot")
 	}
 }
+
+func TestAdminTimeMultipliersLifecycle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg, err := config.Load("../../config.yaml.example")
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	db, err := store.InitDB(cfg)
+	if err != nil {
+		t.Skipf("无法连接数据库，跳过测试")
+		return
+	}
+	_ = db
+
+	r := gin.New()
+	adminGroup := r.Group("/admin")
+	adminGroup.Use(func(c *gin.Context) {
+		c.Set(auth.ContextIsAdmin, true)
+		c.Next()
+	})
+	adminGroup.GET("/time-multipliers", HandleAdminGetTimeMultipliers)
+	adminGroup.PUT("/time-multipliers", HandleAdminUpdateTimeMultipliers)
+	r.GET("/current-multiplier", HandleGetCurrentMultiplier)
+
+	// 1. 获取规则
+	wGet := httptest.NewRecorder()
+	reqGet, _ := http.NewRequest(http.MethodGet, "/admin/time-multipliers", nil)
+	r.ServeHTTP(wGet, reqGet)
+	if wGet.Code != http.StatusOK {
+		t.Fatalf("获取全局倍率失败: %d", wGet.Code)
+	}
+
+	// 2. 更新规则
+	updateBody := `{
+		"rules": [
+			{
+				"id": "test-night",
+				"name": "测试夜间",
+				"days_of_week": [1, 2, 3, 4, 5, 6, 7],
+				"start_time": "21:00",
+				"end_time": "09:00",
+				"multiplier": 0.2,
+				"is_enabled": true
+			}
+		]
+	}`
+	wPut := httptest.NewRecorder()
+	reqPut, _ := http.NewRequest(http.MethodPut, "/admin/time-multipliers", bytes.NewReader([]byte(updateBody)))
+	reqPut.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(wPut, reqPut)
+	if wPut.Code != http.StatusOK {
+		t.Fatalf("保存倍率规则失败: %d, body: %s", wPut.Code, wPut.Body.String())
+	}
+
+	// 3. 测试前台获取当前倍率接口
+	wCur := httptest.NewRecorder()
+	reqCur, _ := http.NewRequest(http.MethodGet, "/current-multiplier", nil)
+	r.ServeHTTP(wCur, reqCur)
+	if wCur.Code != http.StatusOK {
+		t.Fatalf("前台获取当前倍率失败: %d", wCur.Code)
+	}
+}

@@ -11,6 +11,8 @@ import {
   HealthMatrixData,
   SystemConfigData,
   TopConsumersData,
+  TimeMultiplierRule,
+  TimeMultipliersData,
 } from '../types'
 
 export const getBaseApiPrefix = (): string => {
@@ -249,5 +251,23 @@ export async function fetchAdminLogs(
 
 export async function fetchAdminDashboard(): Promise<DashboardData> {
   const res = await apiRequest<{ data: DashboardData }>(`${getBaseApiPrefix()}/admin/dashboard`)
+  return res.data
+}
+
+// 10. 全局时段算力倍率排期治理
+export async function fetchAdminTimeMultipliers(): Promise<TimeMultipliersData> {
+  const res = await apiRequest<{ data: TimeMultipliersData }>(`${getBaseApiPrefix()}/admin/time-multipliers`)
+  return res.data
+}
+
+export async function updateAdminTimeMultipliers(rules: TimeMultiplierRule[]): Promise<{ message: string; data: TimeMultipliersData }> {
+  return apiRequest(`${getBaseApiPrefix()}/admin/time-multipliers`, {
+    method: 'PUT',
+    body: JSON.stringify({ rules }),
+  })
+}
+
+export async function fetchCurrentMultiplier(): Promise<{ current_multiplier: number; matched_rule?: TimeMultiplierRule | null }> {
+  const res = await apiRequest<{ data: { current_multiplier: number; matched_rule?: TimeMultiplierRule | null } }>(`${getBaseApiPrefix()}/current-multiplier`)
   return res.data
 }
