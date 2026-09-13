@@ -995,7 +995,7 @@ export const AdminPoliciesPage: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <input
                 type="number"
-                step="0.05"
+                step="any"
                 min="0.01"
                 className="gate-input"
                 value={multValue}
